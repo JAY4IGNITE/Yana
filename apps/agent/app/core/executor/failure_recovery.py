@@ -161,4 +161,3 @@ def calculate_backoff_delay(
         return initial_delay
     delay = initial_delay * (factor ** (attempt - 1))
     return min(delay, max_delay)
-

@@ -191,4 +191,3 @@ async def get_task_trace(task_id: str) -> dict[str, Any]:
     if not trace:
         raise HTTPException(status_code=404, detail=f"Trace for task '{task_id}' not found.")
     return trace.model_dump(by_alias=True)
-

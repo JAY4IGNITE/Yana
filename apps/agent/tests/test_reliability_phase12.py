@@ -231,26 +231,44 @@ def test_retry_limits_never_indefinite() -> None:
     max_retries = 3
 
     # Temporary errors retryable only while attempt < max_retries
-    assert FailureClassifier.is_retryable(
-        FailureClassification.TEMPORARY, attempt=1, max_retries=max_retries
-    ) is True
-    assert FailureClassifier.is_retryable(
-        FailureClassification.TEMPORARY, attempt=2, max_retries=max_retries
-    ) is True
-    assert FailureClassifier.is_retryable(
-        FailureClassification.TEMPORARY, attempt=3, max_retries=max_retries
-    ) is False
-    assert FailureClassifier.is_retryable(
-        FailureClassification.TEMPORARY, attempt=4, max_retries=max_retries
-    ) is False
+    assert (
+        FailureClassifier.is_retryable(
+            FailureClassification.TEMPORARY, attempt=1, max_retries=max_retries
+        )
+        is True
+    )
+    assert (
+        FailureClassifier.is_retryable(
+            FailureClassification.TEMPORARY, attempt=2, max_retries=max_retries
+        )
+        is True
+    )
+    assert (
+        FailureClassifier.is_retryable(
+            FailureClassification.TEMPORARY, attempt=3, max_retries=max_retries
+        )
+        is False
+    )
+    assert (
+        FailureClassifier.is_retryable(
+            FailureClassification.TEMPORARY, attempt=4, max_retries=max_retries
+        )
+        is False
+    )
 
     # Fatal & Requires User errors are NEVER retryable regardless of attempt
-    assert FailureClassifier.is_retryable(
-        FailureClassification.FATAL, attempt=1, max_retries=max_retries
-    ) is False
-    assert FailureClassifier.is_retryable(
-        FailureClassification.REQUIRES_USER, attempt=1, max_retries=max_retries
-    ) is False
+    assert (
+        FailureClassifier.is_retryable(
+            FailureClassification.FATAL, attempt=1, max_retries=max_retries
+        )
+        is False
+    )
+    assert (
+        FailureClassifier.is_retryable(
+            FailureClassification.REQUIRES_USER, attempt=1, max_retries=max_retries
+        )
+        is False
+    )
 
 
 # ==============================================================================
@@ -362,9 +380,7 @@ async def test_task_trace_endpoint() -> None:
     tid = "trace-integration-test-task"
     task_tracer.start_task(tid, "Integration test goal")
     task_tracer.start_step(tid, 1, "mock_tool")
-    task_tracer.end_step(
-        tid, 1, "completed", verification={"verified": True, "notes": "Done"}
-    )
+    task_tracer.end_step(tid, 1, "completed", verification={"verified": True, "notes": "Done"})
     task_tracer.complete_task(tid, "completed")
 
     transport = ASGITransport(app=app)

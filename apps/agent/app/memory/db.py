@@ -228,4 +228,3 @@ class DatabaseManager:
 
 # Global database manager
 db_manager = DatabaseManager()
-

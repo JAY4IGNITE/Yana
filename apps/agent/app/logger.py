@@ -88,9 +88,7 @@ class ComponentLoggerAdapter(logging.LoggerAdapter):
         super().__init__(logger, extra or {})
         self.component = component
 
-    def process(
-        self, msg: Any, kwargs: Any
-    ) -> tuple[Any, Any]:
+    def process(self, msg: Any, kwargs: Any) -> tuple[Any, Any]:
         extra = dict(kwargs.get("extra") or {})
         merged = {**(self.extra or {}), **extra, "component": self.component}
         kwargs["extra"] = merged

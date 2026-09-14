@@ -84,7 +84,6 @@ async def performance_metrics() -> dict[str, Any]:
     return performance_monitor.get_metrics().model_dump(by_alias=True)
 
 
-
 @router.get("/config")
 async def get_config() -> dict[str, Any]:
     """Return sanitized agent configuration without secrets."""

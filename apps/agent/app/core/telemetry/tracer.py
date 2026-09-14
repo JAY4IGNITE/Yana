@@ -194,8 +194,7 @@ class TaskTracer:
             trace.duration_ms = round((time.perf_counter() - start_mono) * 1000.0, 2)
 
         task_logger.info(
-            f"Task trace [{task_id}] completed with status '{status}' "
-            f"in {trace.duration_ms}ms",
+            f"Task trace [{task_id}] completed with status '{status}' in {trace.duration_ms}ms",
             extra={
                 "task_id": task_id,
                 "status": status,
