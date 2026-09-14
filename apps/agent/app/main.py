@@ -27,12 +27,19 @@ from app.tools import register_default_tools
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager: sets up database and default tools."""
+    import time
+
+    from app.core.performance import performance_monitor
+
+    start_time = time.perf_counter()
     logger.info("Initializing YANA Agent services...")
     # Initialize SQLite database schema
     await db_manager.initialize()
     # Register default baseline tools
     register_default_tools()
-    logger.info("YANA Agent startup complete.")
+    duration = time.perf_counter() - start_time
+    performance_monitor.record_startup_time(duration)
+    logger.info(f"YANA Agent startup complete in {duration:.4f}s.")
     yield
     logger.info("Shutting down YANA Agent services...")
 

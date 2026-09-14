@@ -62,6 +62,12 @@ class TaskManager:
             cancel_reason=existing_cancel,
         )
         self._tasks[tid] = task
+        try:
+            from app.core.telemetry.tracer import task_tracer
+
+            task_tracer.start_task(tid, desc)
+        except Exception:
+            pass
         return TaskStarted(task_id=tid, description=desc)
 
     def start_task(self, task_id: str) -> Task:
@@ -226,6 +232,7 @@ class TaskManager:
         verified: bool | None = None,
         verification_notes: str | None = None,
         is_checkpoint: bool | None = None,
+        duration_ms: float | None = None,
     ) -> TaskStep | None:
         """Update individual step status, outputs, observations, and verification outcome."""
         task = self.get_task(task_id)
@@ -244,6 +251,15 @@ class TaskManager:
                     TaskStatusEnum.CANCELLED,
                 ):
                     step.completed_at = now_iso
+                    if duration_ms is not None:
+                        step.duration_ms = duration_ms
+                    elif step.started_at:
+                        try:
+                            st = datetime.fromisoformat(step.started_at)
+                            ct = datetime.fromisoformat(now_iso)
+                            step.duration_ms = round((ct - st).total_seconds() * 1000.0, 2)
+                        except Exception:
+                            pass
 
                 if output is not None:
                     step.output = output
@@ -312,6 +328,13 @@ class TaskManager:
                 step.status = TaskStatusEnum.CANCELLED
                 step.completed_at = now_iso
 
+        try:
+            from app.core.telemetry.tracer import task_tracer
+
+            task_tracer.complete_task(task_id, "cancelled")
+        except Exception:
+            pass
+
         return TaskCancelled(task_id=task_id, reason=reason)
 
     def complete_task(self, task_id: str, summary: str) -> TaskCompleted:
@@ -324,6 +347,14 @@ class TaskManager:
         task.timestamps["completedAt"] = now_iso
         task.updated_at = now_iso
         task.timestamps["updatedAt"] = now_iso
+
+        try:
+            from app.core.telemetry.tracer import task_tracer
+
+            task_tracer.complete_task(task_id, "completed")
+        except Exception:
+            pass
+
         return TaskCompleted(task_id=task_id, summary=summary)
 
     def fail_task(self, task_id: str, error: SafeErrorPayload) -> Task:
@@ -337,6 +368,14 @@ class TaskManager:
         task.updated_at = now_iso
         task.timestamps["updatedAt"] = now_iso
         self.record_error(task_id, error)
+
+        try:
+            from app.core.telemetry.tracer import task_tracer
+
+            task_tracer.complete_task(task_id, "failed")
+        except Exception:
+            pass
+
         return task
 
 

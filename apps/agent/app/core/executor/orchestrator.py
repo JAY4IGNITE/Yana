@@ -16,13 +16,18 @@ from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from app.config import settings
-from app.core.executor.failure_recovery import FailureClassification, FailureClassifier
+from app.core.executor.failure_recovery import (
+    FailureClassification,
+    FailureClassifier,
+    calculate_backoff_delay,
+)
 from app.core.executor.pipeline import ExecutionPipeline
 from app.core.planner.base import BasePlanner, RuleBasedPlanner
 from app.core.task_manager import TaskManager
 from app.core.task_manager import task_manager as global_task_manager
+from app.core.telemetry.tracer import task_tracer
 from app.errors import ErrorCode, PermissionError, ValidationError
-from app.logger import logger
+from app.logger import logger, task_logger
 from app.permissions.manager import PermissionManager, permission_manager
 from app.protocol.models import (
     BaseProtocolModel,
@@ -222,6 +227,7 @@ class AgentOrchestrator:
             for idx, step in enumerate(plan.steps):
                 step_num = step.step_number
                 step_progress = idx / total_steps
+                task_tracer.start_step(tid, step_num, step.tool_name)
 
                 if await check_pause_and_cancel(step_num):
                     return await self._handle_cancelled(tid, on_event)
@@ -377,6 +383,12 @@ class AgentOrchestrator:
                                 verified=True,
                                 verification_notes=vnotes,
                             )
+                            task_tracer.end_step(
+                                tid,
+                                step_num,
+                                "completed",
+                                verification=verification,
+                            )
                             if on_event:
                                 await on_event(
                                     TaskStepPayload(
@@ -427,8 +439,14 @@ class AgentOrchestrator:
 
                             if classification == FailureClassification.FATAL:
                                 last_error.code = ErrorCode.SECURITY_ERROR
-                                logger.error(
+                                task_logger.error(
                                     f"Fatal error on step {step_num}: {last_error.message}"
+                                )
+                                task_tracer.end_step(
+                                    tid,
+                                    step_num,
+                                    "failed",
+                                    error=last_error,
                                 )
                                 self.task_manager.fail_task(tid, last_error)
                                 await emit_status(
@@ -441,9 +459,15 @@ class AgentOrchestrator:
                                 return self.task_manager.get_task(tid)
 
                             if classification == FailureClassification.REQUIRES_USER:
-                                logger.warning(
+                                task_logger.warning(
                                     f"Step {step_num} requires user intervention: "
                                     f"{last_error.message}"
+                                )
+                                task_tracer.end_step(
+                                    tid,
+                                    step_num,
+                                    "requires_user",
+                                    error=last_error,
                                 )
                                 self.task_manager.fail_task(tid, last_error)
                                 await emit_status(
@@ -510,7 +534,15 @@ class AgentOrchestrator:
                             return self.task_manager.get_task(tid)
 
                     if attempt < self.max_retries:
-                        await asyncio.sleep(0.05)
+                        backoff = calculate_backoff_delay(
+                            attempt, initial_delay=0.05, max_delay=1.0
+                        )
+                        task_logger.warning(
+                            f"Step {step_num} attempt {attempt} failed; retrying in {backoff:.3f}s "
+                            f"(attempt {attempt + 1}/{self.max_retries})",
+                            extra={"task_id": tid, "step": step_num, "tool_id": step.tool_name},
+                        )
+                        await asyncio.sleep(backoff)
 
                 if not step_verified:
                     final_err = last_error or SafeErrorPayload(
@@ -524,6 +556,12 @@ class AgentOrchestrator:
                         TaskStatusEnum.FAILED,
                         error=final_err,
                         verified=False,
+                    )
+                    task_tracer.end_step(
+                        tid,
+                        step_num,
+                        "failed",
+                        error=final_err,
                     )
                     self.task_manager.fail_task(tid, final_err)
                     await emit_status(

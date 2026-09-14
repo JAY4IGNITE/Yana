@@ -32,6 +32,7 @@ class HealthResponse(BaseModel):
     version: str
     protocol_version: str
     environment: str
+    subsystems: dict[str, Any] | None = None
 
 
 class CreateTaskRequest(BaseModel):
@@ -52,12 +53,36 @@ class ExecutionResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """Healthcheck endpoint for Desktop IPC connectivity."""
+    from app.core.health import health_monitor
+
+    health_monitor.record_desktop_ping()
+    report = await health_monitor.get_system_health()
     return HealthResponse(
-        status="healthy",
+        status=report.overall_status,
         version="0.1.0",
         protocol_version=PROTOCOL_VERSION,
         environment=settings.env,
+        subsystems={k: v.model_dump(by_alias=True) for k, v in report.subsystems.items()},
     )
+
+
+@router.get("/health/details")
+async def health_details() -> dict[str, Any]:
+    """Detailed breakdown of all 6 monitored subsystems."""
+    from app.core.health import health_monitor
+
+    health_monitor.record_desktop_ping()
+    report = await health_monitor.get_system_health()
+    return report.model_dump(by_alias=True)
+
+
+@router.get("/performance/metrics")
+async def performance_metrics() -> dict[str, Any]:
+    """Retrieve runtime performance telemetry and resource utilization."""
+    from app.core.performance import performance_monitor
+
+    return performance_monitor.get_metrics().model_dump(by_alias=True)
+
 
 
 @router.get("/config")

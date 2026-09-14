@@ -1,11 +1,13 @@
 """Mock AI Provider for deterministic testing, offline mode, and local dev."""
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 
 from app.ai.base import AIProvider
 from app.ai.models import Message, MessageMetadata, MessageRole
+from app.core.performance import performance_monitor
 from app.errors import AIError
 
 
@@ -26,6 +28,7 @@ class MockAIProvider(AIProvider):
         system_prompt: str | None = None,
     ) -> Message:
         """Produce a complete mock response."""
+        start_t = time.perf_counter()
         last_user_content = ""
         for m in reversed(messages):
             if m.role == MessageRole.USER:
@@ -36,6 +39,8 @@ class MockAIProvider(AIProvider):
             raise AIError("Simulated mock provider error for testing.")
 
         reply_content = self._format_reply(last_user_content)
+        dur_ms = (time.perf_counter() - start_t) * 1000.0
+        performance_monitor.record_ai_latency(dur_ms)
         return Message(
             id=str(uuid4()),
             conversation_id=messages[-1].conversation_id if messages else "default",

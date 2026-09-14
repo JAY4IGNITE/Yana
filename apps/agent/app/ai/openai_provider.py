@@ -6,6 +6,7 @@ API implementing the OpenAI chat completions specification.
 """
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
 from typing import cast
 from uuid import uuid4
@@ -25,6 +26,7 @@ from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from app.ai.base import AIProvider
 from app.ai.models import Message, MessageMetadata, MessageRole
+from app.core.performance import performance_monitor
 from app.errors import (
     AIError,
     ConfigurationError,
@@ -88,6 +90,7 @@ class OpenAICompatibleProvider(AIProvider):
     ) -> Message:
         """Send complete message without streaming."""
         formatted_messages = self._format_messages(messages, system_prompt)
+        start_t = time.perf_counter()
 
         try:
             response = cast(
@@ -100,6 +103,8 @@ class OpenAICompatibleProvider(AIProvider):
                     stream=False,
                 ),
             )
+            dur_ms = (time.perf_counter() - start_t) * 1000.0
+            performance_monitor.record_ai_latency(dur_ms)
 
             choice = response.choices[0]
             content = choice.message.content or ""

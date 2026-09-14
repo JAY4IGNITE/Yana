@@ -15,6 +15,8 @@ describe("Protocol Package Integration", () => {
     expect(ErrorCode.TIMEOUT_ERROR).toBe("TIMEOUT_ERROR");
     expect(ErrorCode.NETWORK_ERROR).toBe("NETWORK_ERROR");
     expect(ErrorCode.SYSTEM_ERROR).toBe("SYSTEM_ERROR");
+    expect(ErrorCode.BROWSER_ERROR).toBe("BROWSER_ERROR");
+    expect(ErrorCode.VOICE_ERROR).toBe("VOICE_ERROR");
   });
 
   it("constructs valid SafeErrorPayload structure", () => {

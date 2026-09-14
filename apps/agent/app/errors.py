@@ -22,6 +22,8 @@ class ErrorCode(StrEnum):
     VOICE_PERMISSION_DENIED = "VOICE_PERMISSION_DENIED"
     LOOP_DETECTED = "LOOP_DETECTED"
     SECURITY_ERROR = "SECURITY_ERROR"
+    BROWSER_ERROR = "BROWSER_ERROR"
+    VOICE_ERROR = "VOICE_ERROR"
 
 
 class YanaBaseError(Exception):
@@ -167,3 +169,26 @@ class LoopDetectedError(YanaBaseError):
             retryable=False,
             **kwargs,
         )
+
+
+class BrowserError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.BROWSER_ERROR,
+            details=details,
+            retryable=False,
+            **kwargs,
+        )
+
+
+class VoiceError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.VOICE_ERROR,
+            details=details,
+            retryable=False,
+            **kwargs,
+        )
+

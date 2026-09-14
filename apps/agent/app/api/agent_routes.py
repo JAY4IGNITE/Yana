@@ -180,3 +180,15 @@ async def retry_agent_task(task_id: str, req: RetryTaskRequest | None = None) ->
         return task.model_dump(by_alias=True)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.get("/tasks/{task_id}/trace", response_model=dict[str, Any])
+async def get_task_trace(task_id: str) -> dict[str, Any]:
+    """Retrieve structured execution trace for a task."""
+    from app.core.telemetry.tracer import task_tracer
+
+    trace = task_tracer.get_trace(task_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail=f"Trace for task '{task_id}' not found.")
+    return trace.model_dump(by_alias=True)
+

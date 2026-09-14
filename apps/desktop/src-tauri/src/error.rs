@@ -19,6 +19,10 @@ pub enum ErrorCode {
     NetworkError,
     #[serde(rename = "SYSTEM_ERROR")]
     SystemError,
+    #[serde(rename = "BROWSER_ERROR")]
+    BrowserError,
+    #[serde(rename = "VOICE_ERROR")]
+    VoiceError,
 }
 
 #[derive(Debug, Error)]

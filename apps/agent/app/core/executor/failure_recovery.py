@@ -144,3 +144,21 @@ class FailureClassifier:
         ):
             return attempt < max_retries
         return False
+
+
+def calculate_backoff_delay(
+    attempt: int,
+    initial_delay: float = 0.05,
+    max_delay: float = 2.0,
+    factor: float = 2.0,
+) -> float:
+    """Calculate exponential backoff delay for a retry attempt.
+
+    attempt: 1-indexed count of completed attempt (e.g. 1 -> initial_delay).
+    Never retries indefinitely; caller bounds by max_retries.
+    """
+    if attempt <= 0:
+        return initial_delay
+    delay = initial_delay * (factor ** (attempt - 1))
+    return min(delay, max_delay)
+

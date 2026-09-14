@@ -12,6 +12,8 @@ def test_error_codes_enum() -> None:
     assert ErrorCode.TIMEOUT_ERROR == "TIMEOUT_ERROR"
     assert ErrorCode.NETWORK_ERROR == "NETWORK_ERROR"
     assert ErrorCode.SYSTEM_ERROR == "SYSTEM_ERROR"
+    assert ErrorCode.BROWSER_ERROR == "BROWSER_ERROR"
+    assert ErrorCode.VOICE_ERROR == "VOICE_ERROR"
 
 
 def test_safe_payload_generation() -> None:

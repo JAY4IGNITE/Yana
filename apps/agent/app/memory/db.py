@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -207,6 +208,24 @@ class DatabaseManager:
             db.row_factory = aiosqlite.Row
             yield db
 
+    async def check_health(self) -> dict[str, Any]:
+        """Verify database connectivity and query responsiveness."""
+        try:
+            async with self.get_connection() as db:
+                cursor = await db.execute("SELECT 1")
+                row = await cursor.fetchone()
+                if row and row[0] == 1:
+                    ver = await self.get_current_version(db)
+                    return {
+                        "status": "healthy",
+                        "schema_version": ver,
+                        "path": str(self.db_path),
+                    }
+                return {"status": "unhealthy", "message": "Query failed to return expected result"}
+        except Exception as e:
+            return {"status": "unhealthy", "error": str(e)}
+
 
 # Global database manager
 db_manager = DatabaseManager()
+

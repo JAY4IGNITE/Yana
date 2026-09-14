@@ -7,10 +7,12 @@ The AI never directly accesses the operating system.
 All operations must flow through this controlled pipeline.
 """
 
+import time
 from dataclasses import dataclass
 
+from app.core.performance import performance_monitor
 from app.core.verifier.base import BaseVerifier, StandardVerifier
-from app.errors import ErrorCode, ToolError, ValidationError
+from app.errors import ErrorCode, ToolError, ValidationError, YanaBaseError
 from app.permissions.manager import PermissionManager, permission_manager
 from app.protocol.models import SafeErrorPayload, ToolCall, ToolResult, VerificationResult
 from app.security.audit import AuditLogger, audit_logger
@@ -105,6 +107,7 @@ class ExecutionPipeline:
             )
 
         # Step 3: Tool Execution (Executor -> OS/Subsystem)
+        tool_start = time.perf_counter()
         try:
             output = await tool.execute(tool_call.arguments)
             success = True
@@ -112,12 +115,18 @@ class ExecutionPipeline:
         except Exception as e:
             success = False
             output = None
-            tool_err = ToolError(
-                f"Execution failed for tool '{tool.name}': {str(e)}",
-                task_id=tool_call.task_id,
-                tool_id=tool.name,
-            )
-            error_payload = SafeErrorPayload(**tool_err.to_safe_payload())
+            if isinstance(e, YanaBaseError):
+                error_payload = SafeErrorPayload(**e.to_safe_payload())
+            else:
+                tool_err = ToolError(
+                    f"Execution failed for tool '{tool.name}': {str(e)}",
+                    task_id=tool_call.task_id,
+                    tool_id=tool.name,
+                )
+                error_payload = SafeErrorPayload(**tool_err.to_safe_payload())
+        finally:
+            tool_dur_ms = (time.perf_counter() - tool_start) * 1000.0
+            performance_monitor.record_tool_latency(tool.name, tool_dur_ms)
 
         result = ToolResult(
             task_id=tool_call.task_id,

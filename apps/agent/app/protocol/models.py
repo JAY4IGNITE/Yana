@@ -101,6 +101,7 @@ class TaskStep(BaseModel):
     is_checkpoint: bool = Field(default=False, alias="isCheckpoint")
     started_at: str | None = Field(default=None, alias="startedAt")
     completed_at: str | None = Field(default=None, alias="completedAt")
+    duration_ms: float | None = Field(default=None, alias="durationMs")
 
 
 class Task(BaseModel):
@@ -187,8 +188,8 @@ class ToolResult(BaseProtocolModel):
 
 class VerificationResult(BaseProtocolModel):
     type: Literal["verification_result"] = "verification_result"
-    task_id: str = Field(..., alias="taskId")
-    tool_call_id: str = Field(..., alias="toolCallId")
+    task_id: str = Field(default="", alias="taskId")
+    tool_call_id: str = Field(default="", alias="toolCallId")
     verified: bool
     notes: str = ""
 

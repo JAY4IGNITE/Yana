@@ -6,6 +6,7 @@ export type TaskStatusType =
   | "executing"
   | "running"
   | "verifying"
+  | "paused"
   | "completed"
   | "failed"
   | "cancelled";

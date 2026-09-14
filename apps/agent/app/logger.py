@@ -15,6 +15,17 @@ SENSITIVE_PATTERNS = [
     re.compile(r"(?i)(authorization:\s*bearer)\s+([a-zA-Z0-9_\-\.]+)", re.IGNORECASE),
 ]
 
+# Tracked subsystems/components for structured observability
+SUPPORTED_COMPONENTS = (
+    "application",
+    "agent",
+    "task",
+    "tool",
+    "permission",
+    "browser",
+    "voice",
+)
+
 
 def redact_sensitive_data(text: str) -> str:
     """Mask credentials and tokens in log strings."""
@@ -35,18 +46,55 @@ class JSONFormatter(logging.Formatter):
             "message": redact_sensitive_data(record.getMessage()),
         }
 
-        # Include structured context if present
-        if hasattr(record, "task_id") and record.task_id:
-            log_payload["task_id"] = record.task_id
-        if hasattr(record, "tool_id") and record.tool_id:
-            log_payload["tool_id"] = record.tool_id
-        if hasattr(record, "component") and record.component:
-            log_payload["component"] = record.component
+        # Component extraction (defaults to logger name suffix or 'application')
+        component = getattr(record, "component", None)
+        if not component:
+            for c in SUPPORTED_COMPONENTS:
+                if f".{c}" in record.name or record.name == f"yana.{c}":
+                    component = c
+                    break
+        if component:
+            log_payload["component"] = component
+
+        # Structured tracking context
+        for key in (
+            "task_id",
+            "tool_id",
+            "step",
+            "duration_ms",
+            "status",
+            "error_code",
+            "verification",
+        ):
+            val = getattr(record, key, None)
+            if val is not None:
+                log_payload[key] = val
 
         if record.exc_info:
             log_payload["exception"] = self.formatException(record.exc_info)
 
         return json.dumps(log_payload)
+
+
+class ComponentLoggerAdapter(logging.LoggerAdapter):
+    """LoggerAdapter that injects component context and structured tracking metadata."""
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        component: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(logger, extra or {})
+        self.component = component
+
+    def process(
+        self, msg: Any, kwargs: Any
+    ) -> tuple[Any, Any]:
+        extra = dict(kwargs.get("extra") or {})
+        merged = {**(self.extra or {}), **extra, "component": self.component}
+        kwargs["extra"] = merged
+        return msg, kwargs
 
 
 def setup_logger(name: str = "yana", level: str = "INFO") -> logging.Logger:
@@ -64,5 +112,34 @@ def setup_logger(name: str = "yana", level: str = "INFO") -> logging.Logger:
     return logger
 
 
+def get_component_logger(
+    component: str,
+    task_id: str | None = None,
+    tool_id: str | None = None,
+) -> ComponentLoggerAdapter:
+    """Get a structured logger tailored for one of the 7 tracked subsystems."""
+    if component not in SUPPORTED_COMPONENTS:
+        comp_name = "application"
+    else:
+        comp_name = component
+
+    base = setup_logger(f"yana.{comp_name}")
+    extra: dict[str, Any] = {"component": comp_name}
+    if task_id:
+        extra["task_id"] = task_id
+    if tool_id:
+        extra["tool_id"] = tool_id
+    return ComponentLoggerAdapter(base, comp_name, extra)
+
+
 # Default application logger
 logger = setup_logger()
+
+# Preconfigured component loggers for the 7 tracked subsystems
+app_logger = get_component_logger("application")
+agent_logger = get_component_logger("agent")
+task_logger = get_component_logger("task")
+tool_logger = get_component_logger("tool")
+permission_logger = get_component_logger("permission")
+browser_logger = get_component_logger("browser")
+voice_logger = get_component_logger("voice")
