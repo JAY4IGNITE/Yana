@@ -57,8 +57,12 @@ async def health_check() -> HealthResponse:
 
     health_monitor.record_desktop_ping()
     report = await health_monitor.get_system_health()
+    agent_h = report.subsystems.get("agent")
+    service_status = (
+        "healthy" if (agent_h and agent_h.status == "healthy") else report.overall_status
+    )
     return HealthResponse(
-        status=report.overall_status,
+        status=service_status,
         version="0.1.0",
         protocol_version=PROTOCOL_VERSION,
         environment=settings.env,

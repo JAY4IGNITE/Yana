@@ -210,20 +210,36 @@ class DatabaseManager:
 
     async def check_health(self) -> dict[str, Any]:
         """Verify database connectivity and query responsiveness."""
-        try:
-            async with self.get_connection() as db:
-                cursor = await db.execute("SELECT 1")
-                row = await cursor.fetchone()
-                if row and row[0] == 1:
-                    ver = await self.get_current_version(db)
+        import asyncio
+        import sqlite3
+
+        def _sync_check() -> dict[str, Any]:
+            try:
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+                with sqlite3.connect(str(self.db_path), timeout=3.0) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT 1")
+                    row = cursor.fetchone()
+                    if row and row[0] == 1:
+                        try:
+                            cursor.execute("SELECT MAX(version) FROM schema_version")
+                            vrow = cursor.fetchone()
+                            ver = int(vrow[0]) if vrow and vrow[0] is not None else 0
+                        except Exception:
+                            ver = 0
+                        return {
+                            "status": "healthy",
+                            "schema_version": ver,
+                            "path": str(self.db_path),
+                        }
                     return {
-                        "status": "healthy",
-                        "schema_version": ver,
-                        "path": str(self.db_path),
+                        "status": "degraded",
+                        "message": "Query failed to return expected result",
                     }
-                return {"status": "unhealthy", "message": "Query failed to return expected result"}
-        except Exception as e:
-            return {"status": "unhealthy", "error": str(e)}
+            except Exception as e:
+                return {"status": "degraded", "error": str(e)}
+
+        return await asyncio.to_thread(_sync_check)
 
 
 # Global database manager
