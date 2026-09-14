@@ -1,4 +1,4 @@
-"""Tools package initialization and default registration for YANA Phase 05."""
+"""Tools package initialization and default registration for YANA Phase 06."""
 
 from app.tools.base import BaseTool
 from app.tools.computer.keyboard_tool import (
@@ -23,10 +23,16 @@ from app.tools.computer.window_tool import (
     ComputerListApplicationsTool,
     ComputerScreenshotTool,
 )
+from app.tools.developer.error_analyzer import DeveloperAnalyzeErrorTool
 from app.tools.filesystem.safe_fs import (
+    FilesystemCopyTool,
     FilesystemCreateDirectoryTool,
+    FilesystemDeleteTool,
+    FilesystemMoveTool,
     FilesystemReadTool,
+    FilesystemRenameTool,
     FilesystemSearchTool,
+    FilesystemWriteTool,
     SafeReadFileTool,
 )
 from app.tools.mock_tools import (
@@ -35,6 +41,8 @@ from app.tools.mock_tools import (
     MockVerifyTool,
     MockWaitTool,
 )
+from app.tools.project.project_inspector import ProjectInspectTool
+from app.tools.project.project_runner import ProjectRunTool
 from app.tools.registry import ToolRegistry, registry
 from app.tools.system.app_launcher import (
     SystemAppLauncherTool,
@@ -49,7 +57,7 @@ from app.tools.terminal.safe_terminal import (
 
 
 def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolRegistry:
-    """Populate tool registry with Phase 04 & 05 computer interaction tools."""
+    """Populate tool registry with system, filesystem, developer, and computer tools."""
     reg = target_registry or registry
 
     # System & App Tools
@@ -61,6 +69,15 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     fs_read = FilesystemReadTool()
     fs_search = FilesystemSearchTool()
     fs_mkdir = FilesystemCreateDirectoryTool()
+    fs_write = FilesystemWriteTool()
+    fs_copy = FilesystemCopyTool()
+    fs_move = FilesystemMoveTool()
+    fs_rename = FilesystemRenameTool()
+
+    # Project & Developer Tools
+    proj_inspect = ProjectInspectTool()
+    proj_run = ProjectRunTool()
+    dev_err = DeveloperAnalyzeErrorTool()
 
     # Computer Window & Screen Tools
     comp_window = ComputerGetActiveWindowTool()
@@ -88,10 +105,18 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         sys_open,
         sys_close,
         sys_info,
-        # Filesystem
+        # Filesystem (deletion remains protected behind permission system)
         fs_read,
         fs_search,
         fs_mkdir,
+        fs_write,
+        fs_copy,
+        fs_move,
+        fs_rename,
+        # Project & Developer
+        proj_inspect,
+        proj_run,
+        dev_err,
         # Computer Window & Screen
         comp_window,
         comp_screenshot,
@@ -129,6 +154,9 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     reg.register_alias("computer.open_application", "system.open_application")
     reg.register_alias("computer.close_application", "system.close_application")
     reg.register_alias("computer.focus_window", "computer.focus_application")
+    reg.register_alias("project.run_backend", "project.run")
+    reg.register_alias("project.run_frontend", "project.run")
+    reg.register_alias("project.run_tests", "project.run")
 
     return reg
 
@@ -147,7 +175,16 @@ __all__ = [
     "FilesystemReadTool",
     "FilesystemSearchTool",
     "FilesystemCreateDirectoryTool",
+    "FilesystemWriteTool",
+    "FilesystemCopyTool",
+    "FilesystemMoveTool",
+    "FilesystemRenameTool",
+    "FilesystemDeleteTool",
     "SafeReadFileTool",
+    # Project & Developer
+    "ProjectInspectTool",
+    "ProjectRunTool",
+    "DeveloperAnalyzeErrorTool",
     # Computer Window & Screen
     "ComputerGetActiveWindowTool",
     "ComputerScreenshotTool",

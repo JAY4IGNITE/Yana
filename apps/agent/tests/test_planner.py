@@ -96,3 +96,39 @@ async def test_llm_planner_parses_valid_json(available_tools: list[dict[str, Any
         assert len(plan.steps) == 1
         assert plan.steps[0].tool_name == "mock.action"
         assert plan.steps[0].arguments == {"action_name": "ping"}
+
+
+@pytest.mark.asyncio
+async def test_rule_based_planner_developer_triggers(
+    available_tools: list[dict[str, Any]],
+) -> None:
+    planner = RuleBasedPlanner()
+
+    # Backend
+    plan_be = await planner.create_plan("run my backend", available_tools)
+    assert len(plan_be.steps) == 1
+    assert plan_be.steps[0].tool_name == "project.run"
+    assert plan_be.steps[0].arguments["action"] == "backend"
+
+    # Frontend
+    plan_fe = await planner.create_plan("run my frontend", available_tools)
+    assert len(plan_fe.steps) == 1
+    assert plan_fe.steps[0].tool_name == "project.run"
+    assert plan_fe.steps[0].arguments["action"] == "frontend"
+
+    # Tests
+    plan_test = await planner.create_plan("run tests", available_tools)
+    assert len(plan_test.steps) == 1
+    assert plan_test.steps[0].tool_name == "project.run"
+    assert plan_test.steps[0].arguments["action"] == "test"
+
+    # Project Inspection
+    plan_inspect = await planner.create_plan("inspect project at ./apps/agent", available_tools)
+    assert len(plan_inspect.steps) == 1
+    assert plan_inspect.steps[0].tool_name == "project.inspect"
+
+    # Error Analysis
+    plan_err = await planner.create_plan("analyze error: ModuleNotFoundError", available_tools)
+    assert len(plan_err.steps) == 1
+    assert plan_err.steps[0].tool_name == "developer.analyze_error"
+

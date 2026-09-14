@@ -1,7 +1,8 @@
-"""Safe Filesystem Tools with Traversal Protection, Sensitive Path Denial, and No Deletion."""
+"""Safe Filesystem Tools with Traversal Protection, Developer Operations, and Deletion Guards."""
 
 import fnmatch
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -257,7 +258,6 @@ class FilesystemCreateDirectoryTool(BaseTool):
 
         resolved = validate_safe_path(path_str, self.allowed_root, allow_nonexistent=True)
 
-        # Disallow creating in root directory or Windows system folder
         if len(resolved.parts) <= 1:
             raise PermissionError("Cannot create a directory in the filesystem root.")
 
@@ -292,6 +292,448 @@ class FilesystemCreateDirectoryTool(BaseTool):
             notes=f"Directory '{path_val}' verified on disk."
             if verified
             else "Directory creation verification failed.",
+        )
+
+
+class FilesystemWriteTool(BaseTool):
+    """Safely writes or appends text content to a file."""
+
+    name = "filesystem.write"
+    category = "filesystem"
+    description = (
+        "Safely writes or appends text content to a file, creating parent directories if needed."
+    )
+    risk_level = RiskLevel.MEDIUM
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Path of the file to write to",
+            },
+            "content": {
+                "type": "string",
+                "description": "Text content to write into the file",
+            },
+            "append": {
+                "type": "boolean",
+                "description": "Whether to append to the file instead of overwriting",
+                "default": False,
+            },
+            "overwrite": {
+                "type": "boolean",
+                "description": "Whether to overwrite existing file (defaults to True)",
+                "default": True,
+            },
+        },
+        "required": ["path", "content"],
+    }
+
+    def __init__(self, allowed_root: Path | None = None) -> None:
+        self.allowed_root = allowed_root
+
+    def validate(self, arguments: dict[str, Any]) -> None:
+        super().validate(arguments)
+        path_str = arguments.get("path")
+        content = arguments.get("content")
+
+        if not path_str or not isinstance(path_str, str):
+            raise ValidationError("Argument 'path' must be a non-empty string.")
+        if not isinstance(content, str):
+            raise ValidationError("Argument 'content' must be a string.")
+
+        resolved = validate_safe_path(path_str, self.allowed_root, allow_nonexistent=True)
+        if len(resolved.parts) <= 1:
+            raise PermissionError("Cannot write directly to the filesystem root.")
+
+        parts_lower = [p.lower() for p in resolved.parts]
+        if "windows" in parts_lower or "program files" in parts_lower:
+            raise PermissionError(f"Writing to protected system directory '{path_str}' is denied.")
+
+        overwrite = arguments.get("overwrite", True)
+        append = arguments.get("append", False)
+        if not overwrite and not append and resolved.exists():
+            raise ValidationError(f"File '{path_str}' already exists and overwrite is False.")
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        path_str = arguments["path"]
+        content = arguments["content"]
+        append = bool(arguments.get("append", False))
+
+        resolved = validate_safe_path(path_str, self.allowed_root, allow_nonexistent=True)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+
+        mode = "a" if append else "w"
+        try:
+            with resolved.open(mode, encoding="utf-8") as f:
+                f.write(content)
+
+            size = resolved.stat().st_size
+            return {
+                "status": "written",
+                "written": True,
+                "path": str(resolved),
+                "bytes_written": len(content.encode("utf-8")),
+                "total_size": size,
+                "append": append,
+            }
+        except Exception as err:
+            raise ToolError(f"Failed to write to file '{path_str}': {str(err)}") from err
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        path_val = output.get("path") if isinstance(output, dict) else None
+        verified = bool(path_val and Path(path_val).is_file())
+        return VerificationResult(
+            task_id="filesystem",
+            tool_call_id="filesystem.write",
+            verified=verified,
+            notes=f"File '{path_val}' written and verified on disk."
+            if verified
+            else "File write verification failed.",
+        )
+
+
+class FilesystemCopyTool(BaseTool):
+    """Safely copies a file or directory tree to a new location."""
+
+    name = "filesystem.copy"
+    category = "filesystem"
+    description = "Safely copies a file or directory tree to a destination path."
+    risk_level = RiskLevel.MEDIUM
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "source_path": {
+                "type": "string",
+                "description": "Source file or directory path",
+            },
+            "destination_path": {
+                "type": "string",
+                "description": "Destination file or directory path",
+            },
+            "overwrite": {
+                "type": "boolean",
+                "description": "Whether to overwrite destination if it exists",
+                "default": False,
+            },
+        },
+        "required": ["source_path", "destination_path"],
+    }
+
+    def __init__(self, allowed_root: Path | None = None) -> None:
+        self.allowed_root = allowed_root
+
+    def validate(self, arguments: dict[str, Any]) -> None:
+        super().validate(arguments)
+        src_str = arguments.get("source_path")
+        dst_str = arguments.get("destination_path")
+
+        if not src_str or not isinstance(src_str, str):
+            raise ValidationError("Argument 'source_path' must be a non-empty string.")
+        if not dst_str or not isinstance(dst_str, str):
+            raise ValidationError("Argument 'destination_path' must be a non-empty string.")
+
+        validate_safe_path(src_str, self.allowed_root, allow_nonexistent=False)
+        dst = validate_safe_path(dst_str, self.allowed_root, allow_nonexistent=True)
+
+        overwrite = bool(arguments.get("overwrite", False))
+        if dst.exists() and not overwrite:
+            raise ValidationError(
+                f"Destination path '{dst_str}' already exists. Pass overwrite=True to replace."
+            )
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        src = validate_safe_path(
+            arguments["source_path"], self.allowed_root, allow_nonexistent=False
+        )
+        dst = validate_safe_path(
+            arguments["destination_path"], self.allowed_root, allow_nonexistent=True
+        )
+        overwrite = bool(arguments.get("overwrite", False))
+
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if src.is_dir():
+                if dst.exists() and overwrite:
+                    shutil.rmtree(dst)
+                shutil.copytree(src, dst)
+                item_type = "directory"
+            else:
+                shutil.copy2(src, dst)
+                item_type = "file"
+
+            return {
+                "status": "copied",
+                "copied": True,
+                "source": str(src),
+                "destination": str(dst),
+                "type": item_type,
+            }
+        except Exception as err:
+            raise ToolError(f"Failed to copy '{src}' to '{dst}': {str(err)}") from err
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        dst_str = output.get("destination") if isinstance(output, dict) else None
+        verified = bool(dst_str and Path(dst_str).exists())
+        return VerificationResult(
+            task_id="filesystem",
+            tool_call_id="filesystem.copy",
+            verified=verified,
+            notes=f"Copy to '{dst_str}' verified." if verified else "Copy verification failed.",
+        )
+
+
+class FilesystemMoveTool(BaseTool):
+    """Safely moves a file or directory to a new location."""
+
+    name = "filesystem.move"
+    category = "filesystem"
+    description = "Safely moves a file or directory tree to a new location."
+    risk_level = RiskLevel.MEDIUM
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "source_path": {
+                "type": "string",
+                "description": "Source file or directory path",
+            },
+            "destination_path": {
+                "type": "string",
+                "description": "Destination file or directory path",
+            },
+        },
+        "required": ["source_path", "destination_path"],
+    }
+
+    def __init__(self, allowed_root: Path | None = None) -> None:
+        self.allowed_root = allowed_root
+
+    def validate(self, arguments: dict[str, Any]) -> None:
+        super().validate(arguments)
+        src_str = arguments.get("source_path")
+        dst_str = arguments.get("destination_path")
+
+        if not src_str or not isinstance(src_str, str):
+            raise ValidationError("Argument 'source_path' must be a non-empty string.")
+        if not dst_str or not isinstance(dst_str, str):
+            raise ValidationError("Argument 'destination_path' must be a non-empty string.")
+
+        validate_safe_path(src_str, self.allowed_root, allow_nonexistent=False)
+        validate_safe_path(dst_str, self.allowed_root, allow_nonexistent=True)
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        src = validate_safe_path(
+            arguments["source_path"], self.allowed_root, allow_nonexistent=False
+        )
+        dst = validate_safe_path(
+            arguments["destination_path"], self.allowed_root, allow_nonexistent=True
+        )
+
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(src, dst)
+            return {
+                "status": "moved",
+                "moved": True,
+                "source": str(src),
+                "destination": str(dst),
+            }
+        except Exception as err:
+            raise ToolError(f"Failed to move '{src}' to '{dst}': {str(err)}") from err
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        src_str = output.get("source") if isinstance(output, dict) else None
+        dst_str = output.get("destination") if isinstance(output, dict) else None
+        verified = bool(
+            dst_str and Path(dst_str).exists() and src_str and not Path(src_str).exists()
+        )
+        return VerificationResult(
+            task_id="filesystem",
+            tool_call_id="filesystem.move",
+            verified=verified,
+            notes=f"Move to '{dst_str}' verified." if verified else "Move verification failed.",
+        )
+
+
+class FilesystemRenameTool(BaseTool):
+    """Safely renames a file or directory within its current directory."""
+
+    name = "filesystem.rename"
+    category = "filesystem"
+    description = "Safely renames a file or directory in-place."
+    risk_level = RiskLevel.MEDIUM
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Path of the file or directory to rename",
+            },
+            "new_name": {
+                "type": "string",
+                "description": "New name (without directory paths or slashes)",
+            },
+        },
+        "required": ["path", "new_name"],
+    }
+
+    def __init__(self, allowed_root: Path | None = None) -> None:
+        self.allowed_root = allowed_root
+
+    def validate(self, arguments: dict[str, Any]) -> None:
+        super().validate(arguments)
+        path_str = arguments.get("path")
+        new_name = arguments.get("new_name")
+
+        if not path_str or not isinstance(path_str, str):
+            raise ValidationError("Argument 'path' must be a non-empty string.")
+        if not new_name or not isinstance(new_name, str):
+            raise ValidationError("Argument 'new_name' must be a non-empty string.")
+
+        if "/" in new_name or "\\" in new_name:
+            raise ValidationError(
+                "Argument 'new_name' cannot contain directory separators. Use filesystem.move."
+            )
+
+        validate_safe_path(path_str, self.allowed_root, allow_nonexistent=False)
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        src = validate_safe_path(arguments["path"], self.allowed_root, allow_nonexistent=False)
+        new_name = arguments["new_name"].strip()
+        dst = src.parent / new_name
+
+        if dst.exists():
+            raise ToolError(f"Cannot rename: destination '{dst}' already exists.")
+
+        try:
+            src.rename(dst)
+            return {
+                "status": "renamed",
+                "renamed": True,
+                "old_path": str(src),
+                "new_path": str(dst),
+                "new_name": new_name,
+            }
+        except Exception as err:
+            raise ToolError(f"Failed to rename '{src}' to '{new_name}': {str(err)}") from err
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        new_path_str = output.get("new_path") if isinstance(output, dict) else None
+        old_path_str = output.get("old_path") if isinstance(output, dict) else None
+        verified = bool(
+            new_path_str
+            and Path(new_path_str).exists()
+            and old_path_str
+            and not Path(old_path_str).exists()
+        )
+        return VerificationResult(
+            task_id="filesystem",
+            tool_call_id="filesystem.rename",
+            verified=verified,
+            notes=f"Renamed to '{new_path_str}' verified."
+            if verified
+            else "Rename verification failed.",
+        )
+
+
+class FilesystemDeleteTool(BaseTool):
+    """Safely deletes a file or directory tree under explicit permission protection."""
+
+    name = "filesystem.delete"
+    category = "filesystem"
+    description = (
+        "Deletes a file or directory tree. Protected behind high-risk permission gating."
+    )
+    risk_level = RiskLevel.HIGH
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Path of the file or directory to delete",
+            },
+            "recursive": {
+                "type": "boolean",
+                "description": "Must be set to True to delete a non-empty directory",
+                "default": False,
+            },
+        },
+        "required": ["path"],
+    }
+
+    def __init__(self, allowed_root: Path | None = None) -> None:
+        self.allowed_root = allowed_root
+
+    def validate(self, arguments: dict[str, Any]) -> None:
+        super().validate(arguments)
+        path_str = arguments.get("path")
+        if not path_str or not isinstance(path_str, str):
+            raise ValidationError("Argument 'path' must be a non-empty string.")
+
+        resolved = validate_safe_path(path_str, self.allowed_root, allow_nonexistent=False)
+
+        # Block root deletion or system locations
+        if self.allowed_root and resolved == self.allowed_root.resolve():
+            raise PermissionError(
+                f"Deleting targets root or system anchor: root directory '{path_str}' "
+                "cannot be deleted."
+            )
+
+        if len(resolved.parts) <= 1:
+            raise PermissionError("Cannot delete filesystem root drive.")
+
+        parts_lower = [p.lower() for p in resolved.parts]
+        if "windows" in parts_lower or "program files" in parts_lower:
+            raise PermissionError(f"Deleting protected system directory '{path_str}' is denied.")
+
+        if resolved.is_dir() and not arguments.get("recursive", False):
+            # Check if directory has contents
+            has_items = any(resolved.iterdir())
+            if has_items:
+                raise ValidationError(
+                    f"Directory '{path_str}' is not empty. Set 'recursive=True' to delete."
+                )
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        path_str = arguments["path"]
+        recursive = bool(arguments.get("recursive", False))
+        resolved = validate_safe_path(path_str, self.allowed_root, allow_nonexistent=False)
+
+        try:
+            if resolved.is_dir():
+                if recursive:
+                    shutil.rmtree(resolved)
+                else:
+                    resolved.rmdir()
+                deleted_type = "directory"
+            else:
+                resolved.unlink()
+                deleted_type = "file"
+
+            return {
+                "status": "deleted",
+                "deleted": True,
+                "path": str(resolved),
+                "type": deleted_type,
+            }
+        except Exception as err:
+            raise ToolError(f"Failed to delete '{path_str}': {str(err)}") from err
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        path_str = output.get("path") if isinstance(output, dict) else None
+        verified = bool(path_str and not Path(path_str).exists())
+        return VerificationResult(
+            task_id="filesystem",
+            tool_call_id="filesystem.delete",
+            verified=verified,
+            notes=f"Deletion of '{path_str}' verified."
+            if verified
+            else "Deletion verification failed.",
         )
 
 

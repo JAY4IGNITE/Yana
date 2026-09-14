@@ -206,7 +206,143 @@ class RuleBasedPlanner(BasePlanner):
                 )
             ]
 
-        # 10. Terminal command
+        # 10. Developer Assistant: Run Backend / Frontend / Test / Build
+        elif "run backend" in g_lower or "run my backend" in g_lower or "start backend" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="project.run",
+                    description="Locate, inspect environment, and run backend service",
+                    arguments={"action": "backend"},
+                )
+            ]
+
+        elif (
+            "run frontend" in g_lower
+            or "run my frontend" in g_lower
+            or "start frontend" in g_lower
+            or "run desktop" in g_lower
+        ):
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="project.run",
+                    description="Locate, inspect environment, and run frontend/desktop service",
+                    arguments={"action": "frontend"},
+                )
+            ]
+
+        elif "run test" in g_lower or "run tests" in g_lower or "test project" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="project.run",
+                    description="Execute project test suite",
+                    arguments={"action": "test"},
+                )
+            ]
+
+        elif "build project" in g_lower or "build the project" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="project.run",
+                    description="Build project artifacts",
+                    arguments={"action": "build"},
+                )
+            ]
+
+        # 11. Developer Assistant: Inspect Project
+        elif (
+            "inspect project" in g_lower
+            or "project inspect" in g_lower
+            or "project structure" in g_lower
+            or "analyze project" in g_lower
+        ):
+            match = re.search(r"(?:at|path|in)\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            proj_path = match.group(1).strip() if match else "."
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="project.inspect",
+                    description=f"Inspect project layout, manifests, and git status at {proj_path}",
+                    arguments={"path": proj_path},
+                )
+            ]
+
+        # 12. Developer Assistant: Error Analysis & Recovery
+        elif (
+            "analyze error" in g_lower
+            or "diagnose error" in g_lower
+            or "error diagnosis" in g_lower
+        ):
+            match = re.search(r"error:\s*(.+)", goal, re.IGNORECASE)
+            err_text = match.group(1).strip() if match else goal
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="developer.analyze_error",
+                    description="Diagnose error root cause and suggest recovery plan",
+                    arguments={"error_text": err_text},
+                )
+            ]
+
+        # 13. Extended Filesystem operations (write, copy, move, rename, delete)
+        elif "write file" in g_lower or "write to file" in g_lower:
+            match = re.search(r"file\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            path = match.group(1).strip() if match else "output.txt"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="filesystem.write",
+                    description=f"Write content to file: {path}",
+                    arguments={"path": path, "content": ""},
+                )
+            ]
+
+        elif "copy file" in g_lower or "duplicate file" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="filesystem.copy",
+                    description="Copy file from source to destination",
+                    arguments={"source_path": "source.txt", "destination_path": "dest.txt"},
+                )
+            ]
+
+        elif "move file" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="filesystem.move",
+                    description="Move file from source to destination",
+                    arguments={"source_path": "source.txt", "destination_path": "dest.txt"},
+                )
+            ]
+
+        elif "rename file" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="filesystem.rename",
+                    description="Rename file",
+                    arguments={"path": "source.txt", "new_name": "renamed.txt"},
+                )
+            ]
+
+        elif "delete file" in g_lower or "remove file" in g_lower:
+            match = re.search(r"file\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            path = match.group(1).strip() if match else "target.txt"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="filesystem.delete",
+                    description=f"Delete file: {path}",
+                    arguments={"path": path},
+                )
+            ]
+
+        # 14. Terminal command
         elif "terminal" in g_lower or "command" in g_lower or "run " in g_lower:
             cmd = goal.replace("run ", "").replace("command ", "").strip() or "whoami"
             tool_name = "terminal.execute"
