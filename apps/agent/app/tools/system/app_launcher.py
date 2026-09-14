@@ -146,11 +146,7 @@ class SystemOpenApplicationTool(BaseTool):
     async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
         pid_val = output.get("pid") if isinstance(output, dict) else None
         proc_alive = isinstance(pid_val, int) and pid_val > 0
-        verified = (
-            isinstance(output, dict)
-            and output.get("status") == "launched"
-            and proc_alive
-        )
+        verified = isinstance(output, dict) and output.get("status") == "launched" and proc_alive
         pid_desc = str(pid_val) if pid_val is not None else "unknown"
         win_title = output.get("window_title") if isinstance(output, dict) else ""
         win_desc = win_title or "process active"

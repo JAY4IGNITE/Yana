@@ -41,8 +41,8 @@ class MockActionTool(BaseTool):
 
     async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
         is_ok = isinstance(output, dict) and output.get("status") == "ok"
-        action_match = (
-            isinstance(output, dict) and output.get("action") == arguments.get("action_name")
+        action_match = isinstance(output, dict) and output.get("action") == arguments.get(
+            "action_name"
         )
         verified = is_ok and action_match
         notes = (

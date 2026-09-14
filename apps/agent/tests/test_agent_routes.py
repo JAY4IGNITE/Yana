@@ -10,9 +10,7 @@ from app.main import app
 
 @pytest.mark.asyncio
 async def test_agent_plan_route() -> None:
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/agent/plan", json={"goal": "test mock diagnostics"})
         assert resp.status_code == 200
         data = resp.json()
@@ -23,9 +21,7 @@ async def test_agent_plan_route() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_run_sse_stream() -> None:
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
             "/api/agent/run",
             json={"goal": "test mock diagnostics"},
@@ -51,9 +47,7 @@ async def test_agent_run_sse_stream() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_task_status_and_cancel_routes() -> None:
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # First generate a plan to get a taskId
         plan_resp = await client.post("/api/agent/plan", json={"goal": "test mock"})
         assert plan_resp.status_code == 200

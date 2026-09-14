@@ -144,9 +144,7 @@ async def test_focus_application_execution_mocked(
         }
     ]
 
-    with patch(
-        "app.tools.computer.window_tool.enumerate_desktop_windows", return_value=mock_apps
-    ):
+    with patch("app.tools.computer.window_tool.enumerate_desktop_windows", return_value=mock_apps):
         with patch("ctypes.windll.user32.ShowWindow") as mock_show:
             with patch("ctypes.windll.user32.SetForegroundWindow") as mock_fg:
                 result = await focus_tool.execute({"window_title": "Notepad"})

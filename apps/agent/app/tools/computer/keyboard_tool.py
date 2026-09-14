@@ -167,6 +167,7 @@ class ComputerTypeTextTool(BaseTool):
                     root = auto.GetRootControl()
 
                 if root is not None:
+
                     def match_elem(c: Any) -> bool:
                         c_name = getattr(c, "Name", "") or ""
                         return element_name.lower() in c_name.lower()
@@ -242,9 +243,7 @@ class ComputerPressKeyTool(BaseTool):
         clean_key = key_name.strip().lower()
         if clean_key not in KEY_MAP:
             valid_keys = ", ".join(sorted(KEY_MAP.keys()))
-            raise ValidationError(
-                f"Unsupported key: '{key_name}'. Supported keys: {valid_keys}"
-            )
+            raise ValidationError(f"Unsupported key: '{key_name}'. Supported keys: {valid_keys}")
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate(arguments)

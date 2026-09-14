@@ -215,4 +215,3 @@ async def test_orchestrator_real_tools_pipeline() -> None:
     assert step.verified is True
     assert step.output is not None
     assert "cpu_cores" in step.output
-

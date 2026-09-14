@@ -62,9 +62,7 @@ def validate_safe_url(url: str, allowed_file_root: Path | None = None) -> str:
         file_path = Path(path_part).resolve()
 
         if is_sensitive_path(file_path):
-            raise PermissionError(
-                f"Navigation to sensitive local file '{file_path}' is denied."
-            )
+            raise PermissionError(f"Navigation to sensitive local file '{file_path}' is denied.")
         if allowed_file_root is not None:
             try:
                 file_path.relative_to(allowed_file_root.resolve())
@@ -101,11 +99,7 @@ def sanitize_untrusted_web_content(
         sanitized = sanitized[:max_bytes] + "\n...[TRUNCATED: Web content exceeded size limit]..."
 
     url_attr = source_url or "unknown"
-    return (
-        f"<untrusted_web_content source='{url_attr}'>\n"
-        f"{sanitized}\n"
-        f"</untrusted_web_content>"
-    )
+    return f"<untrusted_web_content source='{url_attr}'>\n{sanitized}\n</untrusted_web_content>"
 
 
 class DownloadSandboxManager:

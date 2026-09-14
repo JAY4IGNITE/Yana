@@ -272,8 +272,10 @@ class AgentOrchestrator:
 
                     else:
                         v_err = exec_result.tool_result.error
-                        notes = verification.notes if verification else (
-                            v_err.message if v_err else "Action failed"
+                        notes = (
+                            verification.notes
+                            if verification
+                            else (v_err.message if v_err else "Action failed")
                         )
                         last_error = SafeErrorPayload(
                             code=ErrorCode.TOOL_ERROR,

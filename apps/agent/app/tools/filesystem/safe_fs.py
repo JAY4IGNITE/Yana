@@ -178,8 +178,7 @@ class FilesystemSearchTool(BaseTool):
             dirs[:] = [
                 d
                 for d in dirs
-                if d.lower() not in SKIP_SEARCH_DIRS
-                and not is_sensitive_path(current_path / d)
+                if d.lower() not in SKIP_SEARCH_DIRS and not is_sensitive_path(current_path / d)
             ]
 
             for fname in files:
@@ -645,9 +644,7 @@ class FilesystemDeleteTool(BaseTool):
 
     name = "filesystem.delete"
     category = "filesystem"
-    description = (
-        "Deletes a file or directory tree. Protected behind high-risk permission gating."
-    )
+    description = "Deletes a file or directory tree. Protected behind high-risk permission gating."
     risk_level = RiskLevel.HIGH
     input_schema = {
         "type": "object",

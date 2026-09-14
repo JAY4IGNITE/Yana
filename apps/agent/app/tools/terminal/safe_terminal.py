@@ -93,9 +93,7 @@ class TerminalExecuteTool(BaseTool):
             )
 
         log_cmd = redact_sensitive_text(raw_cmd)
-        logger.info(
-            f"Executing {shell} command safely: '{log_cmd}' (timeout: {timeout_sec}s)"
-        )
+        logger.info(f"Executing {shell} command safely: '{log_cmd}' (timeout: {timeout_sec}s)")
 
         if shell == "cmd":
             exec_args = ["cmd.exe", "/c", raw_cmd]

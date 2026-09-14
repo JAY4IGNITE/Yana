@@ -62,9 +62,7 @@ def test_terminal_timeout_validation(terminal_tool: TerminalExecuteTool) -> None
 
 @pytest.mark.asyncio
 async def test_terminal_execute_success(terminal_tool: TerminalExecuteTool) -> None:
-    result = await terminal_tool.execute(
-        {"command": 'Write-Output "YANA_CONTROLLED_TERMINAL_OK"'}
-    )
+    result = await terminal_tool.execute({"command": 'Write-Output "YANA_CONTROLLED_TERMINAL_OK"'})
 
     assert result["exit_code"] == 0
     assert result["timed_out"] is False

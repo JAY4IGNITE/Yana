@@ -142,9 +142,7 @@ async def test_rule_based_planner_browser_triggers(
     planner = RuleBasedPlanner()
 
     # Search documentation workflow
-    plan_search = await planner.create_plan(
-        "search for React documentation", available_tools
-    )
+    plan_search = await planner.create_plan("search for React documentation", available_tools)
     assert len(plan_search.steps) == 3
     assert plan_search.steps[0].tool_name == "browser.open"
     assert plan_search.steps[1].tool_name == "browser.type"
@@ -152,9 +150,7 @@ async def test_rule_based_planner_browser_triggers(
     assert plan_search.steps[2].tool_name == "browser.read"
 
     # Navigate
-    plan_nav = await planner.create_plan(
-        "navigate to https://github.com", available_tools
-    )
+    plan_nav = await planner.create_plan("navigate to https://github.com", available_tools)
     assert len(plan_nav.steps) == 1
     assert plan_nav.steps[0].tool_name == "browser.navigate"
     assert plan_nav.steps[0].arguments["url"] == "https://github.com"
@@ -168,5 +164,3 @@ async def test_rule_based_planner_browser_triggers(
     plan_open = await planner.create_plan("open browser", available_tools)
     assert len(plan_open.steps) == 1
     assert plan_open.steps[0].tool_name == "browser.open"
-
-

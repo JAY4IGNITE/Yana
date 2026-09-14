@@ -318,14 +318,14 @@ class DeveloperAnalyzeErrorTool(BaseTool):
         m = re.search(r'File\s+["\']([^"\']+)["\']', text)
         if m:
             return m.group(1)
-        m2 = re.search(r'-->\s*([^:\s]+):', text)
+        m2 = re.search(r"-->\s*([^:\s]+):", text)
         if m2:
             return m2.group(1)
         return None
 
     def _extract_line(self, text: str) -> int | None:
         """Extract line number from traceback if present."""
-        m = re.search(r'line\s+(\d+)', text, re.IGNORECASE)
+        m = re.search(r"line\s+(\d+)", text, re.IGNORECASE)
         if m:
             try:
                 return int(m.group(1))

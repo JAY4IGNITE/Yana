@@ -24,9 +24,7 @@ async def test_terminal_powershell_execution_and_duration():
     assert "duration_seconds" in res
     assert res["duration_seconds"] >= 0.0
 
-    verification = await tool.verify(
-        {"command": "Write-Output 'YANA Terminal Test'"}, res
-    )
+    verification = await tool.verify({"command": "Write-Output 'YANA Terminal Test'"}, res)
     assert verification.verified is True
 
 
