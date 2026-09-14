@@ -38,3 +38,22 @@ fn test_safe_command_error_mapping() {
     assert_eq!(safe_err.code, ErrorCode::ValidationError);
     assert_eq!(safe_err.message, "Invalid argument supplied");
 }
+
+#[test]
+fn test_permission_request_deserialization() {
+    let json_str = json!({
+        "taskId": "task-xyz",
+        "toolCallId": "call-123",
+        "tool": "terminal.run_command",
+        "riskLevel": "HIGH",
+        "description": "Execute script",
+        "arguments": { "command": "dir" }
+    })
+    .to_string();
+
+    let req: PermissionRequestPayload = serde_json::from_str(&json_str).unwrap();
+    assert_eq!(req.task_id, "task-xyz");
+    assert_eq!(req.tool_call_id, "call-123");
+    assert_eq!(req.risk_level, RiskLevel::High);
+}
+
