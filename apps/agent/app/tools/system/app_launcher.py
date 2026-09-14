@@ -101,12 +101,42 @@ class SystemOpenApplicationTool(BaseTool):
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
+
+            # Deep Verification: verify process exists and inspect desktop window emergence
+            window_found = False
+            window_title = ""
+            hwnd_found = 0
+
+            from app.tools.computer.window_tool import enumerate_desktop_windows
+
+            for _ in range(5):
+                await asyncio.sleep(0.2)
+                apps = enumerate_desktop_windows()
+                for a in apps:
+                    if (
+                        a["pid"] == proc.pid
+                        or app_name.lower() in a["app_name"].lower()
+                        or app_name.lower().replace(".exe", "") in a["title"].lower()
+                    ):
+                        window_found = True
+                        window_title = a["title"]
+                        hwnd_found = a["hwnd"]
+                        break
+                if window_found:
+                    break
+
             return {
                 "status": "launched",
                 "app_name": app_name,
                 "executable": target_exec,
                 "pid": proc.pid,
-                "message": f"Application '{app_name}' launched successfully with PID {proc.pid}.",
+                "window_verified": window_found,
+                "window_title": window_title,
+                "hwnd": hwnd_found,
+                "message": (
+                    f"Application '{app_name}' launched with PID {proc.pid} "
+                    f"(Window: '{window_title or 'initialized'}')."
+                ),
             }
         except FileNotFoundError as err:
             raise ToolError(f"Application executable not found: '{app_name}'") from err
@@ -115,18 +145,20 @@ class SystemOpenApplicationTool(BaseTool):
 
     async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
         pid_val = output.get("pid") if isinstance(output, dict) else None
+        proc_alive = isinstance(pid_val, int) and pid_val > 0
         verified = (
             isinstance(output, dict)
             and output.get("status") == "launched"
-            and isinstance(pid_val, int)
-            and pid_val > 0
+            and proc_alive
         )
         pid_desc = str(pid_val) if pid_val is not None else "unknown"
+        win_title = output.get("window_title") if isinstance(output, dict) else ""
+        win_desc = win_title or "process active"
         return VerificationResult(
             task_id="system",
             tool_call_id="system.open_application",
             verified=verified,
-            notes=f"Process launch verified (PID {pid_desc})."
+            notes=f"Process launch verified (PID {pid_desc}, Window: '{win_desc}')."
             if verified
             else "Application launch could not be verified.",
         )

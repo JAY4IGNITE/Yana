@@ -1,8 +1,26 @@
-"""Tools package initialization and default registration for YANA Phase 04."""
+"""Tools package initialization and default registration for YANA Phase 05."""
 
 from app.tools.base import BaseTool
+from app.tools.computer.keyboard_tool import (
+    ComputerHotkeyTool,
+    ComputerPressKeyTool,
+    ComputerTypeTextTool,
+)
+from app.tools.computer.mouse_tool import (
+    ComputerMouseClickTool,
+    ComputerMouseDoubleClickTool,
+    ComputerMouseMoveTool,
+    ComputerMouseRightClickTool,
+    ComputerMouseScrollTool,
+)
+from app.tools.computer.screen_tool import (
+    ComputerFindUIElementTool,
+    ComputerGetScreenDimensionsTool,
+)
 from app.tools.computer.window_tool import (
+    ComputerFocusApplicationTool,
     ComputerGetActiveWindowTool,
+    ComputerListApplicationsTool,
     ComputerScreenshotTool,
 )
 from app.tools.filesystem.safe_fs import (
@@ -31,38 +49,68 @@ from app.tools.terminal.safe_terminal import (
 
 
 def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolRegistry:
-    """Populate tool registry with Phase 04 real tools and safe simulation tools."""
+    """Populate tool registry with Phase 04 & 05 computer interaction tools."""
     reg = target_registry or registry
 
-    # 1. System Tools
+    # System & App Tools
     sys_open = SystemOpenApplicationTool()
     sys_close = SystemCloseApplicationTool()
     sys_info = SystemGetInfoTool()
 
-    # 2. Filesystem Tools
+    # Filesystem Tools
     fs_read = FilesystemReadTool()
     fs_search = FilesystemSearchTool()
     fs_mkdir = FilesystemCreateDirectoryTool()
 
-    # 3. Computer Tools
+    # Computer Window & Screen Tools
     comp_window = ComputerGetActiveWindowTool()
     comp_screenshot = ComputerScreenshotTool()
+    comp_focus = ComputerFocusApplicationTool()
+    comp_list_apps = ComputerListApplicationsTool()
+    comp_dimensions = ComputerGetScreenDimensionsTool()
+    comp_find_ui = ComputerFindUIElementTool()
 
-    # 4. Terminal Tools
+    # Computer Input (Keyboard & Mouse)
+    comp_type = ComputerTypeTextTool()
+    comp_press_key = ComputerPressKeyTool()
+    comp_hotkey = ComputerHotkeyTool()
+    comp_mouse_move = ComputerMouseMoveTool()
+    comp_mouse_click = ComputerMouseClickTool()
+    comp_mouse_dblclick = ComputerMouseDoubleClickTool()
+    comp_mouse_rclick = ComputerMouseRightClickTool()
+    comp_mouse_scroll = ComputerMouseScrollTool()
+
+    # Terminal Tools
     term_exec = TerminalExecuteTool()
 
-    # Register all 9 core Phase 04 tools
     all_tools: list[BaseTool] = [
+        # System
         sys_open,
         sys_close,
         sys_info,
+        # Filesystem
         fs_read,
         fs_search,
         fs_mkdir,
+        # Computer Window & Screen
         comp_window,
         comp_screenshot,
+        comp_focus,
+        comp_list_apps,
+        comp_dimensions,
+        comp_find_ui,
+        # Computer Input
+        comp_type,
+        comp_press_key,
+        comp_hotkey,
+        comp_mouse_move,
+        comp_mouse_click,
+        comp_mouse_dblclick,
+        comp_mouse_rclick,
+        comp_mouse_scroll,
+        # Terminal
         term_exec,
-        # Mock tools retained for pipeline and lifecycle testing
+        # Simulation mocks for pipeline testing
         MockActionTool(),
         MockWaitTool(),
         MockVerifyTool(),
@@ -75,9 +123,12 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         except Exception:
             pass
 
-    # Register backward-compatible aliases
+    # Aliases
     reg.register_alias("filesystem.read_file", "filesystem.read")
     reg.register_alias("terminal.run_command", "terminal.execute")
+    reg.register_alias("computer.open_application", "system.open_application")
+    reg.register_alias("computer.close_application", "system.close_application")
+    reg.register_alias("computer.focus_window", "computer.focus_application")
 
     return reg
 
@@ -97,9 +148,22 @@ __all__ = [
     "FilesystemSearchTool",
     "FilesystemCreateDirectoryTool",
     "SafeReadFileTool",
-    # Computer
+    # Computer Window & Screen
     "ComputerGetActiveWindowTool",
     "ComputerScreenshotTool",
+    "ComputerFocusApplicationTool",
+    "ComputerListApplicationsTool",
+    "ComputerGetScreenDimensionsTool",
+    "ComputerFindUIElementTool",
+    # Computer Input
+    "ComputerTypeTextTool",
+    "ComputerPressKeyTool",
+    "ComputerHotkeyTool",
+    "ComputerMouseMoveTool",
+    "ComputerMouseClickTool",
+    "ComputerMouseDoubleClickTool",
+    "ComputerMouseRightClickTool",
+    "ComputerMouseScrollTool",
     # Terminal
     "TerminalExecuteTool",
     "SafeTerminalRunTool",

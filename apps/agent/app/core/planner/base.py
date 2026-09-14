@@ -222,7 +222,102 @@ class RuleBasedPlanner(BasePlanner):
                 )
             ]
 
-        # 11. Default single-action fallback
+        # 11. Focus Application / Window
+        elif "focus app" in g_lower or "focus window" in g_lower or "switch to" in g_lower:
+            match = re.search(r"(?:to|window|app)\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            target = match.group(1).strip() if match else "notepad.exe"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.focus_application",
+                    description=f"Focus application window: {target}",
+                    arguments={"window_title": target, "app_name": target},
+                )
+            ]
+
+        # 12. List Applications
+        elif "list app" in g_lower or "list applications" in g_lower or "running app" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.list_applications",
+                    description="Enumerate running applications with visible windows",
+                    arguments={},
+                )
+            ]
+
+        # 13. Screen Dimensions
+        elif "screen dimensions" in g_lower or "screen size" in g_lower or "resolution" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.get_screen_dimensions",
+                    description="Retrieve display resolution and multi-monitor bounds",
+                    arguments={},
+                )
+            ]
+
+        # 14. Type Text
+        elif "type text" in g_lower or "type " in g_lower or "write text" in g_lower:
+            match = re.search(r"(?:type|write)\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            text_to_type = match.group(1).strip() if match else "Hello YANA"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.type_text",
+                    description=f"Type text: '{text_to_type}'",
+                    arguments={"text": text_to_type},
+                )
+            ]
+
+        # 15. Press Key
+        elif "press key" in g_lower or "hit key" in g_lower:
+            match = re.search(r"key\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            key_name = match.group(1).strip() if match else "Enter"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.press_key",
+                    description=f"Press key: {key_name}",
+                    arguments={"key": key_name},
+                )
+            ]
+
+        # 16. Hotkey
+        elif "hotkey" in g_lower or "shortcut" in g_lower or "ctrl+" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.hotkey",
+                    description="Trigger keyboard shortcut combination",
+                    arguments={"keys": ["Ctrl", "C"]},
+                )
+            ]
+
+        # 17. Mouse Click
+        elif "click" in g_lower or "mouse click" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.mouse_click",
+                    description="Click mouse at specified target",
+                    arguments={"button": "left"},
+                )
+            ]
+
+        # 18. Mouse Scroll
+        elif "scroll" in g_lower:
+            amount = -3 if "down" in g_lower else 3
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.mouse_scroll",
+                    description=f"Scroll mouse by {amount} units",
+                    arguments={"amount": amount},
+                )
+            ]
+
+        # 19. Default single-action fallback
         else:
             steps = [
                 PlanStep(
