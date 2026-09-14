@@ -14,6 +14,11 @@ fn test_semantic_version_comparison() {
     assert!(!is_newer_version("0.1.0", "0.1.0"));
     assert!(!is_newer_version("0.2.0", "0.1.0"));
     assert!(!is_newer_version("1.0.0", "0.9.9"));
+    // Trailing zeros edge cases
+    assert!(!is_newer_version("1.0", "1.0.0"));
+    assert!(!is_newer_version("1.0.0", "1.0"));
+    assert!(is_newer_version("1.0", "1.0.1"));
+    assert!(!is_newer_version("1.0.1", "1.0"));
 }
 
 #[test]
@@ -58,6 +63,7 @@ fn test_agent_supervisor_circuit_breaker_prevents_restart_loops() {
     assert_eq!(s1.failure_count, 1);
     assert!(!s1.circuit_breaker_tripped);
     assert_eq!(s1.next_backoff_ms, 1000);
+    assert!(supervisor.last_restart.is_some());
 
     // 2nd failure: exponential backoff increases
     let s2 = supervisor.record_failure();
@@ -84,4 +90,5 @@ fn test_agent_supervisor_circuit_breaker_prevents_restart_loops() {
     assert_eq!(reset_status.failure_count, 0);
     assert!(!reset_status.circuit_breaker_tripped);
     assert_eq!(supervisor.state, SupervisorState::Running);
+    assert!(supervisor.last_restart.is_none());
 }

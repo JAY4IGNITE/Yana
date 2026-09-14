@@ -77,6 +77,7 @@ impl AgentSupervisor {
         }
 
         self.state = SupervisorState::Restarting;
+        self.last_restart = Some(now);
         let current_backoff = self.backoff_ms;
         self.backoff_ms = (self.backoff_ms * 2).min(10000);
 
@@ -98,6 +99,7 @@ impl AgentSupervisor {
     pub fn reset(&mut self) -> SupervisorStatus {
         self.state = SupervisorState::Running;
         self.failure_timestamps.clear();
+        self.last_restart = None;
         self.backoff_ms = INITIAL_BACKOFF_MS;
 
         SupervisorStatus {

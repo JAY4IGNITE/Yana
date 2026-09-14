@@ -94,8 +94,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [isOpen, activeTab, agentConnected]);
 
   const handleToggleAutostart = async (enable: boolean) => {
-    setAutostartEnabled(enable);
-    await safeInvoke("set_launch_at_startup", { enable });
+    const res = await safeInvoke<boolean>("set_launch_at_startup", { enable });
+    if (res === true) {
+      setAutostartEnabled(enable);
+    } else if (res === false) {
+      setAutostartEnabled(!enable);
+    } else {
+      setAutostartEnabled(enable);
+    }
   };
 
   const handleCheckUpdates = async () => {

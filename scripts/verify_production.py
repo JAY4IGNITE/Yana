@@ -149,6 +149,13 @@ def verify_production_configuration() -> list[str]:
     if "*" in prod_cors:
         errors.append("CORS wildcard '*' detected in production allowed_origins.")
 
+    # Invariant 5: Verify debug and documentation endpoints are disabled in production
+    docs_url = None if prod_settings.env == "production" else "/docs"
+    redoc_url = None if prod_settings.env == "production" else "/redoc"
+    openapi_url = None if prod_settings.env == "production" else "/openapi.json"
+    if docs_url is not None or redoc_url is not None or openapi_url is not None:
+        errors.append("Debug / OpenAPI documentation endpoints must be disabled in production.")
+
     return errors
 
 

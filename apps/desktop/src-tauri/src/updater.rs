@@ -46,7 +46,11 @@ pub fn is_newer_version(current: &str, candidate: &str) -> bool {
         }
     }
 
-    cand_parts.len() > cur_parts.len()
+    if cand_parts.len() > cur_parts.len() {
+        cand_parts[cur_parts.len()..].iter().any(|&p| p > 0)
+    } else {
+        false
+    }
 }
 
 /// Enforce that all update channels use strictly authenticated HTTPS endpoints.

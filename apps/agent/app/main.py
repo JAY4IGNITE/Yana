@@ -49,6 +49,9 @@ app = FastAPI(
     version="0.1.0",
     description="Backend AI Agent Core for YANA Desktop Companion",
     lifespan=lifespan,
+    docs_url=None if settings.env == "production" else "/docs",
+    redoc_url=None if settings.env == "production" else "/redoc",
+    openapi_url=None if settings.env == "production" else "/openapi.json",
 )
 
 

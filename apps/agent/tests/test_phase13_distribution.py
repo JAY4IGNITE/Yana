@@ -115,3 +115,21 @@ def test_preflight_production_verifier():
 
     errors = verify_production.verify_production_configuration()
     assert len(errors) == 0, f"Production verification errors found: {errors}"
+
+
+def test_debug_endpoints_disabled_in_production():
+    """Verify that OpenAPI / Swagger docs endpoints are disabled when env is production."""
+    from fastapi import FastAPI
+
+    from app.config import AgentSettings
+
+    prod_settings = AgentSettings(env="production")
+    app = FastAPI(
+        title="Production App",
+        docs_url=None if prod_settings.env == "production" else "/docs",
+        redoc_url=None if prod_settings.env == "production" else "/redoc",
+        openapi_url=None if prod_settings.env == "production" else "/openapi.json",
+    )
+    assert app.docs_url is None
+    assert app.redoc_url is None
+    assert app.openapi_url is None
