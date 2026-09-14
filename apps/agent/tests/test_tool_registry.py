@@ -1,9 +1,9 @@
-"""Tests for Tool Registry and Argument Validation."""
+from typing import Any
 
 import pytest
 
 from app.errors import ToolError, ValidationError
-from app.protocol.models import RiskLevel
+from app.protocol.models import RiskLevel, VerificationResult
 from app.tools.base import BaseTool
 from app.tools.registry import ToolRegistry
 
@@ -16,6 +16,14 @@ class SampleTool(BaseTool):
 
     async def execute(self, arguments: dict) -> dict:
         return {"echo": arguments.get("text", "")}
+
+    async def verify(self, arguments: dict, output: Any) -> VerificationResult:
+        return VerificationResult(
+            task_id="test",
+            tool_call_id="test",
+            verified=True,
+            notes="ok",
+        )
 
 
 def test_registry_registration_and_lookup() -> None:

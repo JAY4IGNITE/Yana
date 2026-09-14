@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.errors import PermissionError, ValidationError
-from app.protocol.models import RiskLevel
+from app.protocol.models import RiskLevel, VerificationResult
 from app.tools.base import BaseTool
 
 
@@ -13,6 +13,13 @@ class SafeReadFileTool(BaseTool):
     category = "filesystem"
     description = "Safely reads text content from an allowed file path."
     risk_level = RiskLevel.LOW
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Relative or absolute path to read"},
+        },
+        "required": ["path"],
+    }
 
     def __init__(self, allowed_root: Path | None = None) -> None:
         self.allowed_root = (allowed_root or Path.cwd()).resolve()
@@ -53,3 +60,14 @@ class SafeReadFileTool(BaseTool):
             "size": len(content),
             "content": content[:4000],  # bounded read preview
         }
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        verified = isinstance(output, dict) and "content" in output
+        return VerificationResult(
+            task_id="fs",
+            tool_call_id="fs",
+            verified=verified,
+            notes=f"File '{arguments.get('path')}' verified read successfully."
+            if verified
+            else "File read verification failed.",
+        )

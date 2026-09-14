@@ -4,6 +4,9 @@ import {
   VerificationResult,
   TaskStarted,
   TaskCancelled,
+  TaskCompleted,
+  TaskStatus,
+  TaskStepPayload,
   PermissionResult,
   SafeErrorPayload,
 } from "@yana/protocol";
@@ -11,6 +14,7 @@ import {
   Conversation,
   ConversationSummary,
   MessageMetadata,
+  Task,
 } from "@yana/shared-types";
 
 export const DEFAULT_AGENT_URL = "http://127.0.0.1:8765/api";
@@ -304,6 +308,136 @@ export class AgentClient {
       reader.releaseLock();
     }
   }
+
+  // =========================================================================
+  // Phase 03: Autonomous Agent Task & Plan Services
+  // =========================================================================
+
+  async planAgentTask(goal: string): Promise<PlanResponse> {
+    const res = await fetch(`${this.baseUrl}/agent/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to create plan: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async runAgentTask(
+    goal: string,
+    callbacks: AgentTaskCallbacks,
+    taskId?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/agent/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal, taskId }),
+      signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Agent task failed to start: HTTP ${res.status}`);
+    }
+
+    if (!res.body) {
+      throw new Error("No response body available from agent task stream.");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+          const jsonStr = trimmed.slice(6);
+          try {
+            const data = JSON.parse(jsonStr);
+            if (data.type === "task_status" && callbacks.onStatus) {
+              callbacks.onStatus(data);
+            } else if (data.type === "task_step" && callbacks.onStep) {
+              callbacks.onStep(data);
+            } else if (data.type === "task_completed" && callbacks.onCompleted) {
+              callbacks.onCompleted(data);
+            } else if (data.type === "task_cancelled" && callbacks.onCancelled) {
+              callbacks.onCancelled(data);
+            } else if (data.type === "error" && callbacks.onError) {
+              callbacks.onError(data);
+            } else if (data.error && callbacks.onError) {
+              callbacks.onError(data.error);
+            }
+          } catch {
+            // Ignore malformed chunks
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error)?.name === "AbortError") {
+        return;
+      }
+      callbacks.onError?.({
+        code: "NETWORK_ERROR" as any,
+        message: err instanceof Error ? err.message : "Agent task stream disconnected.",
+        retryable: true,
+      });
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  async getAgentTask(taskId: string): Promise<Task> {
+    const res = await fetch(`${this.baseUrl}/agent/tasks/${taskId}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch task '${taskId}': ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async cancelAgentTask(taskId: string, reason?: string): Promise<TaskCancelled> {
+    const res = await fetch(`${this.baseUrl}/agent/tasks/${taskId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason || "User requested cancellation" }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to cancel agent task: ${res.status}`);
+    }
+    return res.json();
+  }
+}
+
+export interface PlanStepItem {
+  stepNumber: number;
+  toolName: string;
+  description: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface PlanResponse {
+  taskId: string;
+  goal: string;
+  steps: PlanStepItem[];
+}
+
+export interface AgentTaskCallbacks {
+  onStatus?: (status: TaskStatus) => void;
+  onStep?: (step: TaskStepPayload) => void;
+  onCompleted?: (completed: TaskCompleted) => void;
+  onCancelled?: (cancelled: TaskCancelled) => void;
+  onError?: (error: SafeErrorPayload) => void;
 }
 
 export const agentClient = new AgentClient();

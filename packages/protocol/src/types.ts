@@ -50,12 +50,40 @@ export interface TaskStarted extends BaseMessage {
   description: string;
 }
 
+export type TaskStatusType =
+  | "pending"
+  | "planning"
+  | "waiting_confirmation"
+  | "waiting_permission"
+  | "executing"
+  | "running"
+  | "verifying"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 export interface TaskStatus extends BaseMessage {
   type: "task_status";
   taskId: string;
-  status: "pending" | "running" | "waiting_permission" | "verifying" | "completed" | "failed" | "cancelled";
+  status: TaskStatusType;
   message: string;
   progress?: number; // 0.0 to 1.0
+  currentStep?: number;
+  totalSteps?: number;
+}
+
+export interface TaskStepPayload extends BaseMessage {
+  type: "task_step";
+  taskId: string;
+  stepId: string;
+  stepNumber: number;
+  toolName: string;
+  description: string;
+  status: TaskStatusType;
+  arguments?: Record<string, unknown>;
+  output?: unknown;
+  error?: SafeErrorPayload;
+  verified?: boolean;
 }
 
 export interface ToolCall extends BaseMessage {

@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.agent_routes import router as agent_router
 from app.api.conversation_routes import (
     conversations_router,
 )
@@ -81,6 +82,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 app.include_router(router)
 app.include_router(conversation_router)
 app.include_router(conversations_router)
+app.include_router(agent_router)
 
 
 if __name__ == "__main__":

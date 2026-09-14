@@ -1,12 +1,14 @@
 """Tests for the Architectural Execution Pipeline."""
 
+from typing import Any
+
 import pytest
 
 from app.core.executor.pipeline import ExecutionPipeline
 from app.core.verifier.base import StandardVerifier
 from app.errors import ErrorCode
 from app.permissions.manager import PermissionManager
-from app.protocol.models import RiskLevel, ToolCall
+from app.protocol.models import RiskLevel, ToolCall, VerificationResult
 from app.tools.base import BaseTool
 from app.tools.registry import ToolRegistry
 
@@ -20,6 +22,14 @@ class EchoTool(BaseTool):
     async def execute(self, arguments: dict) -> dict:
         return {"result": arguments.get("val")}
 
+    async def verify(self, arguments: dict, output: Any) -> VerificationResult:
+        return VerificationResult(
+            task_id="test",
+            tool_call_id="test",
+            verified=output is not None,
+            notes="ok",
+        )
+
 
 class DangerousTool(BaseTool):
     name = "test.danger"
@@ -29,6 +39,14 @@ class DangerousTool(BaseTool):
 
     async def execute(self, arguments: dict) -> dict:
         return {"dangerous_action": "completed"}
+
+    async def verify(self, arguments: dict, output: Any) -> VerificationResult:
+        return VerificationResult(
+            task_id="test",
+            tool_call_id="test",
+            verified=output is not None,
+            notes="ok",
+        )
 
 
 @pytest.mark.asyncio

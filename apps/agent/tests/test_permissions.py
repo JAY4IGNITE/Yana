@@ -1,10 +1,10 @@
-"""Tests for Permission Manager and Risk Gating."""
+from typing import Any
 
 import pytest
 
 from app.errors import PermissionError
 from app.permissions.manager import PermissionManager
-from app.protocol.models import RiskLevel
+from app.protocol.models import RiskLevel, VerificationResult
 from app.tools.base import BaseTool
 
 
@@ -17,6 +17,14 @@ class DummyTool(BaseTool):
 
     async def execute(self, arguments: dict) -> str:
         return "dummy_ok"
+
+    async def verify(self, arguments: dict, output: Any) -> VerificationResult:
+        return VerificationResult(
+            task_id="test",
+            tool_call_id="test",
+            verified=True,
+            notes="ok",
+        )
 
 
 def test_low_risk_auto_approved() -> None:

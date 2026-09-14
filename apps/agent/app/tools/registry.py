@@ -24,6 +24,10 @@ class ToolRegistry:
             raise ToolError(f"Tool '{name}' not found in registry.")
         return self._tools[name]
 
+    def get_tool(self, name: str) -> BaseTool:
+        """Retrieve a tool by name (alias for get)."""
+        return self.get(name)
+
     def list_tools(self) -> list[dict[str, Any]]:
         """List schemas of all registered tools."""
         return [tool.get_schema() for tool in self._tools.values()]

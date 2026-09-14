@@ -36,6 +36,9 @@ export const App: React.FC = () => {
     loadConversation,
     handleGrantPermission,
     handleDenyPermission,
+    activeTask,
+    handleCancelActiveTask,
+    handleDismissActiveTask,
   } = useProtocol();
 
   // Escape key collapses expanded assistant back to floating pet
@@ -74,6 +77,9 @@ export const App: React.FC = () => {
           isGenerating={isGenerating}
           alwaysOnTop={alwaysOnTop}
           agentConnected={agentConnected}
+          activeTask={activeTask}
+          onCancelTask={handleCancelActiveTask}
+          onDismissTask={handleDismissActiveTask}
           onCollapse={collapseWindow}
           onToggleAlwaysOnTop={toggleAlwaysOnTop}
           onSendMessage={handleSendMessage}

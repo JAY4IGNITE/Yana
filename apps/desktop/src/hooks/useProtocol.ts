@@ -8,8 +8,16 @@ import {
   ConversationSummary,
   YanaState,
 } from "@yana/shared-types";
-import { PermissionRequest, TaskStatus, SafeErrorPayload } from "@yana/protocol";
+import {
+  PermissionRequest,
+  TaskStatus,
+  TaskStepPayload,
+  TaskCompleted,
+  TaskCancelled,
+  SafeErrorPayload,
+} from "@yana/protocol";
 import { agentClient, DEFAULT_AGENT_URL } from "../services/agentClient";
+import { ActiveTaskState } from "../components/Companion/TaskProgressCard";
 
 // Safe Tauri invocation helper (graceful in tests & browser dev server)
 async function safeInvoke(cmd: string, args?: Record<string, unknown>) {
@@ -57,11 +65,13 @@ export function useProtocol() {
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [currentTaskStatus, setCurrentTaskStatus] = useState<TaskStatus | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
+  const [activeTask, setActiveTask] = useState<ActiveTaskState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationListOpen, setConversationListOpen] = useState(false);
 
   // Ref to cancel active stream
   const abortControllerRef = useRef<AbortController | null>(null);
+  const agentTaskAbortRef = useRef<AbortController | null>(null);
 
   // Check backend health
   const checkConnection = useCallback(async () => {
@@ -155,6 +165,180 @@ export function useProtocol() {
     };
   }, [expandWindow]);
 
+  // Phase 03: Autonomous Agent Task Execution
+  const handleRunAgentTask = useCallback(
+    async (goal: string) => {
+      const taskId = crypto.randomUUID ? crypto.randomUUID() : `task-${Date.now()}`;
+      setActiveTask({
+        id: taskId,
+        goal,
+        status: "planning",
+        progress: 0.05,
+        stepDescription: "Planning execution steps...",
+        steps: [],
+      });
+
+      setPetState("thinking");
+      setPetMood("focused");
+      setAppStatus("busy");
+
+      const controller = new AbortController();
+      agentTaskAbortRef.current = controller;
+
+      try {
+        await agentClient.runAgentTask(
+          goal,
+          {
+            onStatus: (st: TaskStatus) => {
+              setActiveTask((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      id: st.taskId || prev.id,
+                      status: st.status,
+                      progress: st.progress !== undefined ? st.progress : prev.progress,
+                      currentStep: st.currentStep !== undefined ? st.currentStep : prev.currentStep,
+                      totalSteps: st.totalSteps !== undefined ? st.totalSteps : prev.totalSteps,
+                      stepDescription: st.message || prev.stepDescription,
+                    }
+                  : null
+              );
+
+              if (st.status === "executing" || st.status === "running") {
+                setPetState("executing");
+              } else if (st.status === "verifying") {
+                setPetState("thinking");
+              } else if (
+                st.status === "waiting_confirmation" ||
+                st.status === "waiting_permission"
+              ) {
+                setPetState("listening");
+                setPetMood("curious");
+              }
+            },
+            onStep: (step: TaskStepPayload) => {
+              setActiveTask((prev) => {
+                if (!prev) return null;
+                const existingIdx = prev.steps.findIndex(
+                  (s) => s.stepNumber === step.stepNumber || s.stepId === step.stepId
+                );
+                const updatedSteps = [...prev.steps];
+                if (existingIdx >= 0) {
+                  updatedSteps[existingIdx] = step;
+                } else {
+                  updatedSteps.push(step);
+                }
+                return {
+                  ...prev,
+                  steps: updatedSteps,
+                  currentStep: step.stepNumber,
+                  stepDescription: step.description,
+                };
+              });
+            },
+            onCompleted: (done: TaskCompleted) => {
+              setActiveTask((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "completed",
+                      progress: 1.0,
+                      stepDescription: done.summary || "Task completed successfully",
+                    }
+                  : null
+              );
+              setPetState("idle");
+              setPetMood("happy");
+              setAppStatus("ready");
+
+              const doneMsg: ConversationMessage = {
+                id: crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`,
+                conversationId: currentConversationId,
+                role: "assistant",
+                content: `Task Completed: ${done.summary || goal}`,
+                timestamp: new Date().toISOString(),
+              };
+              setMessages((prev) => [...prev, doneMsg]);
+            },
+            onCancelled: (cancelled: TaskCancelled) => {
+              setActiveTask((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "cancelled",
+                      stepDescription: cancelled.reason || "Task cancelled by user",
+                    }
+                  : null
+              );
+              setPetState("idle");
+              setPetMood("curious");
+              setAppStatus("ready");
+            },
+            onError: (err: SafeErrorPayload) => {
+              setActiveTask((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "failed",
+                      error: err.message,
+                    }
+                  : null
+              );
+              setPetState("error");
+              setPetMood("concerned");
+              setAppStatus("ready");
+            },
+          },
+          taskId,
+          controller.signal
+        );
+      } catch (err: unknown) {
+        setActiveTask((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "failed",
+                error: err instanceof Error ? err.message : "Agent task execution error.",
+              }
+            : null
+        );
+        setPetState("error");
+        setPetMood("concerned");
+        setAppStatus("ready");
+      }
+    },
+    [currentConversationId]
+  );
+
+  const handleCancelActiveTask = useCallback(async () => {
+    if (!activeTask) return;
+    if (agentTaskAbortRef.current) {
+      agentTaskAbortRef.current.abort();
+      agentTaskAbortRef.current = null;
+    }
+    try {
+      await agentClient.cancelAgentTask(activeTask.id);
+    } catch {
+      // Ignore if already completed or aborted
+    }
+    setActiveTask((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: "cancelled",
+            stepDescription: "Cancellation requested by user.",
+          }
+        : null
+    );
+    setPetState("idle");
+    setPetMood("curious");
+    setAppStatus("ready");
+  }, [activeTask]);
+
+  const handleDismissActiveTask = useCallback(() => {
+    setActiveTask(null);
+  }, []);
+
   // Stop / Cancel active generation
   const handleStop = useCallback(async () => {
     // 1. Abort local fetch
@@ -163,9 +347,18 @@ export function useProtocol() {
       abortControllerRef.current = null;
     }
 
+    if (agentTaskAbortRef.current) {
+      agentTaskAbortRef.current.abort();
+      agentTaskAbortRef.current = null;
+    }
+
     // 2. Propagate cancel signal to backend provider
     if (activeSessionId && agentConnected) {
       await agentClient.cancelGeneration(activeSessionId).catch(() => {});
+    }
+
+    if (activeTask && agentConnected) {
+      await agentClient.cancelAgentTask(activeTask.id).catch(() => {});
     }
 
     setIsListening(false);
@@ -174,6 +367,18 @@ export function useProtocol() {
     setActiveSessionId(null);
     setPetState("idle");
     setAppStatus("ready");
+
+    if (activeTask) {
+      setActiveTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "cancelled",
+              stepDescription: "Task stopped by user.",
+            }
+          : null
+      );
+    }
 
     if (currentTaskStatus?.status === "running") {
       setCurrentTaskStatus((prev) =>
@@ -186,7 +391,7 @@ export function useProtocol() {
           : null
       );
     }
-  }, [activeSessionId, agentConnected, currentTaskStatus?.status]);
+  }, [activeSessionId, activeTask, agentConnected, currentTaskStatus?.status]);
 
   // Send message flow (Streaming enabled)
   const handleSendMessage = async (text: string) => {
@@ -221,7 +426,33 @@ export function useProtocol() {
       return;
     }
 
-    // 2. Normal conversational message
+    // 2. Check for Agent Autonomous Task trigger
+    const lower = text.trim().toLowerCase();
+    if (
+      lower.startsWith("/agent ") ||
+      lower.startsWith("/task ") ||
+      lower.startsWith("agent:") ||
+      lower.includes("run agent") ||
+      lower.includes("test mock")
+    ) {
+      let goal = text.trim();
+      if (lower.startsWith("/agent ")) goal = text.trim().slice(7).trim();
+      else if (lower.startsWith("/task ")) goal = text.trim().slice(6).trim();
+      else if (lower.startsWith("agent:")) goal = text.trim().slice(6).trim();
+
+      const userMsg: ConversationMessage = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`,
+        conversationId: currentConversationId,
+        role: "user",
+        content: text,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      await handleRunAgentTask(goal);
+      return;
+    }
+
+    // 3. Normal conversational message
     const userMsgId = crypto.randomUUID();
     const assistantMsgId = crypto.randomUUID();
     const sessionId = crypto.randomUUID();
@@ -656,6 +887,7 @@ export function useProtocol() {
     pendingPermission,
     currentTaskStatus,
     activeToolName,
+    activeTask,
     agentConnected,
     agentUrl: DEFAULT_AGENT_URL,
     settingsOpen,
@@ -675,5 +907,8 @@ export function useProtocol() {
     loadConversation,
     handleGrantPermission,
     handleDenyPermission,
+    handleRunAgentTask,
+    handleCancelActiveTask,
+    handleDismissActiveTask,
   };
 }

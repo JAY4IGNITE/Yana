@@ -99,12 +99,25 @@ class ExecutionPipeline:
         # Step 4: Verification (Verifier)
         verification = None
         if success:
-            verification = await self.verifier.verify(
-                task_id=tool_call.task_id,
-                tool_call_id=tool_call.id,
-                tool_name=tool.name,
-                tool_output=output,
-            )
+            if hasattr(tool, "verify") and callable(tool.verify):
+                try:
+                    verification = await tool.verify(tool_call.arguments, output)
+                    verification.task_id = tool_call.task_id
+                    verification.tool_call_id = tool_call.id
+                except Exception as e:
+                    verification = VerificationResult(
+                        task_id=tool_call.task_id,
+                        tool_call_id=tool_call.id,
+                        verified=False,
+                        notes=f"Tool verification raised an error: {str(e)}",
+                    )
+            else:
+                verification = await self.verifier.verify(
+                    task_id=tool_call.task_id,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool.name,
+                    tool_output=output,
+                )
 
         return PipelineExecutionResult(tool_result=result, verification=verification)
 

@@ -19,6 +19,7 @@ import {
   History,
   X,
 } from "lucide-react";
+import { TaskProgressCard, ActiveTaskState } from "./TaskProgressCard";
 
 interface ExpandedAssistantViewProps {
   petState: PetState;
@@ -31,6 +32,9 @@ interface ExpandedAssistantViewProps {
   isGenerating?: boolean;
   alwaysOnTop: boolean;
   agentConnected: boolean;
+  activeTask?: ActiveTaskState | null;
+  onCancelTask?: () => void;
+  onDismissTask?: () => void;
   onCollapse: () => void;
   onToggleAlwaysOnTop: () => void;
   onSendMessage: (text: string) => void;
@@ -54,6 +58,9 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
   isGenerating = false,
   alwaysOnTop,
   agentConnected,
+  activeTask,
+  onCancelTask,
+  onDismissTask,
   onCollapse,
   onToggleAlwaysOnTop,
   onSendMessage,
@@ -289,6 +296,17 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
           <span>{getStatusText()}</span>
         </div>
       </div>
+
+      {/* Autonomous Agent Task Card */}
+      {activeTask && (
+        <div className="px-3 pt-2 flex-shrink-0">
+          <TaskProgressCard
+            task={activeTask}
+            onCancel={onCancelTask}
+            onDismiss={onDismissTask}
+          />
+        </div>
+      )}
 
       {/* Conversation Area */}
       <div

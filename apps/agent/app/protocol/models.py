@@ -21,8 +21,11 @@ class RiskLevel(StrEnum):
 
 class TaskStatusEnum(StrEnum):
     PENDING = "pending"
-    RUNNING = "running"
+    PLANNING = "planning"
+    WAITING_CONFIRMATION = "waiting_confirmation"
     WAITING_PERMISSION = "waiting_permission"
+    EXECUTING = "executing"
+    RUNNING = "running"
     VERIFYING = "verifying"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -72,6 +75,74 @@ class TaskStatus(BaseProtocolModel):
     status: TaskStatusEnum
     message: str
     progress: float | None = None
+    current_step: int | None = Field(default=None, alias="currentStep")
+    total_steps: int | None = Field(default=None, alias="totalSteps")
+
+
+class TaskStep(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    task_id: str = Field(..., alias="taskId")
+    step_number: int = Field(..., alias="stepNumber")
+    tool_name: str = Field(..., alias="toolName")
+    description: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    status: TaskStatusEnum = TaskStatusEnum.PENDING
+    retry_count: int = Field(default=0, alias="retryCount")
+    output: Any = None
+    error: SafeErrorPayload | None = None
+    verified: bool | None = None
+    verification_notes: str | None = Field(default=None, alias="verificationNotes")
+    started_at: str | None = Field(default=None, alias="startedAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+
+
+class Task(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    goal: str
+    status: TaskStatusEnum = TaskStatusEnum.PENDING
+    steps: list[TaskStep] = Field(default_factory=list)
+    current_step_index: int = Field(default=0, alias="currentStepIndex")
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat(),
+        alias="createdAt",
+    )
+    updated_at: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat(),
+        alias="updatedAt",
+    )
+    summary: str | None = None
+    error: SafeErrorPayload | None = None
+    cancel_reason: str | None = Field(default=None, alias="cancelReason")
+
+    @property
+    def task_id(self) -> str:
+        return self.id
+
+    @property
+    def description(self) -> str:
+        return self.goal
+
+    @property
+    def cancelled(self) -> bool:
+        return self.status == TaskStatusEnum.CANCELLED
+
+
+class TaskStepPayload(BaseProtocolModel):
+    type: Literal["task_step"] = "task_step"
+    task_id: str = Field(..., alias="taskId")
+    step_id: str = Field(..., alias="stepId")
+    step_number: int = Field(..., alias="stepNumber")
+    tool_name: str = Field(..., alias="toolName")
+    description: str
+    status: TaskStatusEnum
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    output: Any = None
+    error: SafeErrorPayload | None = None
+    verified: bool | None = None
 
 
 class ToolCall(BaseProtocolModel):
@@ -139,6 +210,7 @@ ProtocolMessage = Annotated[
     | AssistantMessage
     | TaskStarted
     | TaskStatus
+    | TaskStepPayload
     | ToolCall
     | ToolResult
     | VerificationResult

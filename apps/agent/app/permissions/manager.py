@@ -32,6 +32,10 @@ class PermissionManager:
         """Record explicit user decision for a pending tool call."""
         self._user_consents[tool_call_id] = granted
 
+    def is_approved(self, tool_call_id: str) -> bool:
+        """Check whether explicit user consent has been granted for a tool call."""
+        return self._user_consents.get(tool_call_id, False)
+
     def evaluate(
         self, tool: BaseTool, tool_call_id: str, arguments: dict[str, Any]
     ) -> PermissionDecision:
