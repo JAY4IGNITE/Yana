@@ -1,0 +1,24 @@
+{
+  "name": "yana",
+  "version": "0.1.0",
+  "private": true,
+  "description": "YANA - Personal Native Windows AI Desktop Companion",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run --workspaces --if-present typecheck",
+    "test": "npm run --workspaces --if-present test",
+    "test:frontend": "npm run --workspace=apps/desktop test",
+    "test:agent": "cd apps/agent && uv run pytest",
+    "lint": "npm run --workspaces --if-present lint",
+    "build": "npm run --workspaces --if-present build",
+    "dev:desktop": "npm run --workspace=apps/desktop dev",
+    "dev:tauri": "npm run --workspace=apps/desktop tauri:dev",
+    "dev:agent": "cd apps/agent && uv run uvicorn app.main:app --reload --port 8765"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

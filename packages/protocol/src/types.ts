@@ -1,0 +1,131 @@
+import { SafeErrorPayload } from "./errors.js";
+
+/**
+ * Protocol specification version.
+ */
+export const PROTOCOL_VERSION = "1.0.0";
+
+/**
+ * Discriminator types for all protocol messages.
+ */
+export type MessageType =
+  | "user_message"
+  | "assistant_message"
+  | "task_started"
+  | "task_status"
+  | "tool_call"
+  | "tool_result"
+  | "verification_result"
+  | "permission_request"
+  | "permission_result"
+  | "error"
+  | "task_completed"
+  | "task_cancelled";
+
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface BaseMessage {
+  version: string;
+  id: string;
+  timestamp: string; // ISO-8601
+}
+
+export interface UserMessage extends BaseMessage {
+  type: "user_message";
+  content: string;
+  attachments?: string[];
+}
+
+export interface AssistantMessage extends BaseMessage {
+  type: "assistant_message";
+  content: string;
+  taskId?: string;
+}
+
+export interface TaskStarted extends BaseMessage {
+  type: "task_started";
+  taskId: string;
+  description: string;
+}
+
+export interface TaskStatus extends BaseMessage {
+  type: "task_status";
+  taskId: string;
+  status: "pending" | "running" | "waiting_permission" | "verifying" | "completed" | "failed" | "cancelled";
+  message: string;
+  progress?: number; // 0.0 to 1.0
+}
+
+export interface ToolCall extends BaseMessage {
+  type: "tool_call";
+  taskId: string;
+  tool: string;
+  riskLevel: RiskLevel;
+  arguments: Record<string, unknown>;
+}
+
+export interface ToolResult extends BaseMessage {
+  type: "tool_result";
+  taskId: string;
+  toolCallId: string;
+  success: boolean;
+  output: unknown;
+  error?: SafeErrorPayload;
+}
+
+export interface VerificationResult extends BaseMessage {
+  type: "verification_result";
+  taskId: string;
+  toolCallId: string;
+  verified: boolean;
+  notes: string;
+}
+
+export interface PermissionRequest extends BaseMessage {
+  type: "permission_request";
+  taskId: string;
+  toolCallId: string;
+  tool: string;
+  riskLevel: RiskLevel;
+  description: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface PermissionResult extends BaseMessage {
+  type: "permission_result";
+  taskId: string;
+  toolCallId: string;
+  granted: boolean;
+  reason?: string;
+}
+
+export interface ErrorMessage extends BaseMessage {
+  type: "error";
+  payload: SafeErrorPayload;
+}
+
+export interface TaskCompleted extends BaseMessage {
+  type: "task_completed";
+  taskId: string;
+  summary: string;
+}
+
+export interface TaskCancelled extends BaseMessage {
+  type: "task_cancelled";
+  taskId: string;
+  reason: string;
+}
+
+export type ProtocolMessage =
+  | UserMessage
+  | AssistantMessage
+  | TaskStarted
+  | TaskStatus
+  | ToolCall
+  | ToolResult
+  | VerificationResult
+  | PermissionRequest
+  | PermissionResult
+  | ErrorMessage
+  | TaskCompleted
+  | TaskCancelled;
