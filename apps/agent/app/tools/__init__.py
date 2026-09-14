@@ -1,6 +1,20 @@
-"""Tools package initialization and default registration for YANA Phase 06."""
+"""Tools package initialization and default registration for YANA Phase 07."""
 
 from app.tools.base import BaseTool
+from app.tools.browser import (
+    BrowserBackTool,
+    BrowserClickTool,
+    BrowserDownloadTool,
+    BrowserForwardTool,
+    BrowserGetPageInfoTool,
+    BrowserNavigateTool,
+    BrowserOpenTool,
+    BrowserReadTool,
+    BrowserRefreshTool,
+    BrowserScrollTool,
+    BrowserSelectTool,
+    BrowserTypeTool,
+)
 from app.tools.computer.keyboard_tool import (
     ComputerHotkeyTool,
     ComputerPressKeyTool,
@@ -57,7 +71,7 @@ from app.tools.terminal.safe_terminal import (
 
 
 def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolRegistry:
-    """Populate tool registry with system, filesystem, developer, and computer tools."""
+    """Populate tool registry with system, filesystem, developer, computer, and browser tools."""
     reg = target_registry or registry
 
     # System & App Tools
@@ -100,6 +114,20 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     # Terminal Tools
     term_exec = TerminalExecuteTool()
 
+    # Browser Tools (Playwright)
+    br_open = BrowserOpenTool()
+    br_navigate = BrowserNavigateTool()
+    br_back = BrowserBackTool()
+    br_forward = BrowserForwardTool()
+    br_refresh = BrowserRefreshTool()
+    br_read = BrowserReadTool()
+    br_click = BrowserClickTool()
+    br_type = BrowserTypeTool()
+    br_select = BrowserSelectTool()
+    br_scroll = BrowserScrollTool()
+    br_download = BrowserDownloadTool()
+    br_info = BrowserGetPageInfoTool()
+
     all_tools: list[BaseTool] = [
         # System
         sys_open,
@@ -135,6 +163,19 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         comp_mouse_scroll,
         # Terminal
         term_exec,
+        # Browser Tools
+        br_open,
+        br_navigate,
+        br_back,
+        br_forward,
+        br_refresh,
+        br_read,
+        br_click,
+        br_type,
+        br_select,
+        br_scroll,
+        br_download,
+        br_info,
         # Simulation mocks for pipeline testing
         MockActionTool(),
         MockWaitTool(),
@@ -157,6 +198,9 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     reg.register_alias("project.run_backend", "project.run")
     reg.register_alias("project.run_frontend", "project.run")
     reg.register_alias("project.run_tests", "project.run")
+    # Browser aliases
+    reg.register_alias("browser.open_url", "browser.navigate")
+    reg.register_alias("browser.get_info", "browser.get_page_info")
 
     return reg
 
@@ -204,6 +248,19 @@ __all__ = [
     # Terminal
     "TerminalExecuteTool",
     "SafeTerminalRunTool",
+    # Browser Tools
+    "BrowserOpenTool",
+    "BrowserNavigateTool",
+    "BrowserBackTool",
+    "BrowserForwardTool",
+    "BrowserRefreshTool",
+    "BrowserReadTool",
+    "BrowserClickTool",
+    "BrowserTypeTool",
+    "BrowserSelectTool",
+    "BrowserScrollTool",
+    "BrowserDownloadTool",
+    "BrowserGetPageInfoTool",
     # Mocks
     "MockActionTool",
     "MockWaitTool",

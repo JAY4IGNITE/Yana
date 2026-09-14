@@ -8,11 +8,13 @@ import pytest
 from app.ai.models import Message, MessageRole
 from app.core.planner.base import LLMPlanner, Plan, PlanStep, RuleBasedPlanner
 from app.errors import ValidationError
+from app.tools import register_default_tools
 from app.tools.registry import registry
 
 
 @pytest.fixture
 def available_tools() -> list[dict[str, Any]]:
+    register_default_tools()
     return registry.list_tools()
 
 
@@ -131,4 +133,40 @@ async def test_rule_based_planner_developer_triggers(
     plan_err = await planner.create_plan("analyze error: ModuleNotFoundError", available_tools)
     assert len(plan_err.steps) == 1
     assert plan_err.steps[0].tool_name == "developer.analyze_error"
+
+
+@pytest.mark.asyncio
+async def test_rule_based_planner_browser_triggers(
+    available_tools: list[dict[str, Any]],
+) -> None:
+    planner = RuleBasedPlanner()
+
+    # Search documentation workflow
+    plan_search = await planner.create_plan(
+        "search for React documentation", available_tools
+    )
+    assert len(plan_search.steps) == 3
+    assert plan_search.steps[0].tool_name == "browser.open"
+    assert plan_search.steps[1].tool_name == "browser.type"
+    assert "React documentation" in plan_search.steps[1].arguments["text"]
+    assert plan_search.steps[2].tool_name == "browser.read"
+
+    # Navigate
+    plan_nav = await planner.create_plan(
+        "navigate to https://github.com", available_tools
+    )
+    assert len(plan_nav.steps) == 1
+    assert plan_nav.steps[0].tool_name == "browser.navigate"
+    assert plan_nav.steps[0].arguments["url"] == "https://github.com"
+
+    # Read webpage
+    plan_read = await planner.create_plan("read webpage", available_tools)
+    assert len(plan_read.steps) == 1
+    assert plan_read.steps[0].tool_name == "browser.read"
+
+    # Open browser
+    plan_open = await planner.create_plan("open browser", available_tools)
+    assert len(plan_open.steps) == 1
+    assert plan_open.steps[0].tool_name == "browser.open"
+
 

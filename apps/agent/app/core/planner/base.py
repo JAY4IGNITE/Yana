@@ -175,7 +175,76 @@ class RuleBasedPlanner(BasePlanner):
                 )
             ]
 
-        # 8. Filesystem Search
+        # 8. Browser Automation: Search for Documentation or Web Query
+        elif "search for " in g_lower and (
+            "documentation" in g_lower
+            or "browser" in g_lower
+            or "web" in g_lower
+            or "react" in g_lower
+        ):
+            match = re.search(
+                r"search for\s+['\"]?([^'\"]+?)['\"]?(?:\s+in\s+browser|\s+on\s+web)?$",
+                goal,
+                re.IGNORECASE,
+            )
+            query = match.group(1).strip() if match else "React documentation"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="browser.open",
+                    description="Open browser session",
+                    arguments={"url": "https://duckduckgo.com"},
+                ),
+                PlanStep(
+                    step_number=2,
+                    tool_name="browser.type",
+                    description=f"Type search query '{query}' and submit",
+                    arguments={"name": "q", "text": query, "press_enter": True},
+                ),
+                PlanStep(
+                    step_number=3,
+                    tool_name="browser.read",
+                    description="Extract and summarize search results",
+                    arguments={},
+                ),
+            ]
+
+        # 9. Browser Automation: Navigate / Open Website
+        elif "navigate to" in g_lower or "open website" in g_lower or "browse to" in g_lower:
+            match = re.search(r"(?:to|website)\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            url = match.group(1).strip() if match else "https://duckduckgo.com"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="browser.navigate",
+                    description=f"Navigate to {url}",
+                    arguments={"url": url},
+                )
+            ]
+
+        # 10. Browser Automation: Read Webpage
+        elif "read webpage" in g_lower or "read page" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="browser.read",
+                    description="Read sanitized webpage content",
+                    arguments={},
+                )
+            ]
+
+        # 11. Browser Automation: Open Browser
+        elif "open browser" in g_lower or "launch browser" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="browser.open",
+                    description="Open browser session",
+                    arguments={},
+                )
+            ]
+
+        # 12. Filesystem Search
         elif "search file" in g_lower or "find file" in g_lower:
             match = re.search(r"for\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
             pattern = match.group(1).strip() if match else "*.txt"
