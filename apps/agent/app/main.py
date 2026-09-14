@@ -15,6 +15,7 @@ from app.api.conversation_routes import (
     router as conversation_router,
 )
 from app.api.routes import router
+from app.api.voice_routes import router as voice_router
 from app.config import settings
 from app.errors import ErrorCode, YanaBaseError
 from app.logger import logger
@@ -83,6 +84,7 @@ app.include_router(router)
 app.include_router(conversation_router)
 app.include_router(conversations_router)
 app.include_router(agent_router)
+app.include_router(voice_router)
 
 
 if __name__ == "__main__":

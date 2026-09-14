@@ -16,7 +16,7 @@ import {
   TaskCancelled,
   SafeErrorPayload,
 } from "@yana/protocol";
-import { agentClient, DEFAULT_AGENT_URL } from "../services/agentClient";
+import { agentClient, DEFAULT_AGENT_URL, AudioDevice } from "../services/agentClient";
 import { ActiveTaskState } from "../components/Companion/TaskProgressCard";
 
 // Safe Tauri invocation helper (graceful in tests & browser dev server)
@@ -69,9 +69,31 @@ export function useProtocol() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationListOpen, setConversationListOpen] = useState(false);
 
+  // Voice & Audio Hardware State (Phase 08)
+  const [microphones, setMicrophones] = useState<AudioDevice[]>([]);
+  const [speakers, setSpeakers] = useState<AudioDevice[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("default_mic");
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState<string>("default_speaker");
+  const [wakeWordEnabled, setWakeWordEnabled] = useState<boolean>(false);
+
   // Ref to cancel active stream
   const abortControllerRef = useRef<AbortController | null>(null);
   const agentTaskAbortRef = useRef<AbortController | null>(null);
+
+  // Voice device refresher
+  const refreshVoiceDevices = useCallback(async () => {
+    try {
+      const dev = await agentClient.getVoiceDevices();
+      setMicrophones(dev.microphones || []);
+      setSpeakers(dev.speakers || []);
+      const st = await agentClient.getVoiceStatus();
+      if (st.microphone) setSelectedMicId(st.microphone.id);
+      if (st.speaker) setSelectedSpeakerId(st.speaker.id);
+      setWakeWordEnabled(st.wakeWordEnabled);
+    } catch {
+      // Offline fallback
+    }
+  }, []);
 
   // Check backend health
   const checkConnection = useCallback(async () => {
@@ -79,10 +101,11 @@ export function useProtocol() {
       await agentClient.checkHealth();
       setAgentConnected(true);
       if (appStatus === "offline") setAppStatus("ready");
+      refreshVoiceDevices();
     } catch {
       setAgentConnected(false);
     }
-  }, [appStatus]);
+  }, [appStatus, refreshVoiceDevices]);
 
   useEffect(() => {
     checkConnection();
@@ -710,15 +733,163 @@ export function useProtocol() {
     setMessages([]);
   };
 
-  const handleToggleListening = () => {
-    if (isListening) {
-      setIsListening(false);
-      setPetState("idle");
-    } else {
-      setIsListening(true);
-      setPetState("listening");
+  const handleSelectMic = async (id: string) => {
+    setSelectedMicId(id);
+    try {
+      if (agentConnected) {
+        await agentClient.selectVoiceDevice(id, undefined);
+      }
+    } catch {
+      // Offline fallback
     }
   };
+
+  const handleSelectSpeaker = async (id: string) => {
+    setSelectedSpeakerId(id);
+    try {
+      if (agentConnected) {
+        await agentClient.selectVoiceDevice(undefined, id);
+      }
+    } catch {
+      // Offline fallback
+    }
+  };
+
+  const handleToggleWakeWord = async (enabled: boolean) => {
+    setWakeWordEnabled(enabled);
+    try {
+      if (agentConnected) {
+        await agentClient.toggleWakeWord(enabled);
+      }
+    } catch {
+      // Offline fallback
+    }
+  };
+
+  const handleStartPushToTalk = async () => {
+    if (isSpeaking) {
+      await handleInterruptSpeaking();
+      return;
+    }
+    setIsListening(true);
+    setPetState("listening");
+    setPetMood("curious");
+    try {
+      if (agentConnected) {
+        await agentClient.startPushToTalk();
+      }
+    } catch {
+      // Offline fallback
+    }
+  };
+
+  const handleStopPushToTalk = async () => {
+    setIsListening(false);
+    setPetState("thinking");
+    setPetMood("focused");
+
+    try {
+      if (agentConnected) {
+        const res = await agentClient.stopPushToTalk();
+        if (res.transcript && res.transcript.trim()) {
+          const userMsg: ConversationMessage = {
+            id: crypto.randomUUID ? crypto.randomUUID() : `user-${Date.now()}`,
+            conversationId: currentConversationId,
+            role: "user",
+            content: res.transcript,
+            timestamp: new Date().toISOString(),
+          };
+          const assistantMsg: ConversationMessage = {
+            id: crypto.randomUUID ? crypto.randomUUID() : `asst-${Date.now()}`,
+            conversationId: currentConversationId,
+            role: "assistant",
+            content: res.response,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, userMsg, assistantMsg]);
+          setPetState("speaking");
+          setIsSpeaking(true);
+          setPetMood("happy");
+
+          setTimeout(() => {
+            setIsSpeaking(false);
+            setPetState("idle");
+            setPetMood("neutral");
+          }, 2500);
+        } else {
+          setPetState("idle");
+          setPetMood("neutral");
+        }
+      } else {
+        setTimeout(() => {
+          setPetState("idle");
+          setPetMood("neutral");
+        }, 1000);
+      }
+    } catch {
+      setPetState("error");
+      setTimeout(() => setPetState("idle"), 2500);
+    }
+  };
+
+  const handleStopSpeaking = async () => {
+    if (isSpeaking) {
+      setIsSpeaking(false);
+      setPetState("idle");
+      setPetMood("neutral");
+      try {
+        if (agentConnected) {
+          await agentClient.stopSpeaking();
+        }
+      } catch {
+        // Offline fallback
+      }
+    }
+  };
+
+  const handleInterruptSpeaking = async () => {
+    setIsSpeaking(false);
+    setIsListening(true);
+    setPetState("listening");
+    setPetMood("curious");
+    try {
+      if (agentConnected) {
+        await agentClient.interruptSpeaking();
+      }
+    } catch {
+      // Offline fallback
+    }
+  };
+
+  const handleTriggerShortcut = async () => {
+    if (isSpeaking) {
+      await handleInterruptSpeaking();
+    } else if (isListening) {
+      await handleStopPushToTalk();
+    } else {
+      await handleStartPushToTalk();
+    }
+  };
+
+  const handleToggleListening = async () => {
+    if (isListening) {
+      await handleStopPushToTalk();
+    } else {
+      await handleStartPushToTalk();
+    }
+  };
+
+  // Global shortcut (Ctrl+Shift+Space) for push-to-talk toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.code === "Space" || e.key === " ")) {
+        e.preventDefault();
+        handleTriggerShortcut();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isListening, isSpeaking, agentConnected]);
 
   const handleGrantPermission = async (toolCallId: string) => {
     if (!pendingPermission) return;
@@ -910,5 +1081,18 @@ export function useProtocol() {
     handleRunAgentTask,
     handleCancelActiveTask,
     handleDismissActiveTask,
+    microphones,
+    speakers,
+    selectedMicId,
+    selectedSpeakerId,
+    wakeWordEnabled,
+    handleSelectMic,
+    handleSelectSpeaker,
+    handleToggleWakeWord,
+    handleStartPushToTalk,
+    handleStopPushToTalk,
+    handleStopSpeaking,
+    handleInterruptSpeaking,
+    handleTriggerShortcut,
   };
 }

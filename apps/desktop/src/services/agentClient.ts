@@ -417,6 +417,146 @@ export class AgentClient {
     }
     return res.json();
   }
+
+  // ==========================================================================
+  // Voice Interaction API (Phase 08)
+  // ==========================================================================
+
+  async getVoiceStatus(): Promise<VoiceStatus> {
+    const res = await fetch(`${this.baseUrl}/voice/status`);
+    if (!res.ok) {
+      throw new Error(`Failed to get voice status: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async getVoiceDevices(): Promise<VoiceDevicesResponse> {
+    const res = await fetch(`${this.baseUrl}/voice/devices`);
+    if (!res.ok) {
+      throw new Error(`Failed to list voice devices: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async selectVoiceDevice(
+    microphoneId?: string,
+    speakerId?: string
+  ): Promise<Record<string, unknown>> {
+    const res = await fetch(`${this.baseUrl}/voice/devices/select`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ microphoneId, speakerId }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to select voice device: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async startPushToTalk(): Promise<{ status: string; state: string; microphone?: string }> {
+    const res = await fetch(`${this.baseUrl}/voice/push-to-talk/start`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to start push-to-talk: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async stopPushToTalk(): Promise<PushToTalkStopResponse> {
+    const res = await fetch(`${this.baseUrl}/voice/push-to-talk/stop`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to stop push-to-talk: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async stopSpeaking(): Promise<{ status: string; state: string }> {
+    const res = await fetch(`${this.baseUrl}/voice/stop`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to stop speaking: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async interruptSpeaking(): Promise<{ status: string; state: string }> {
+    const res = await fetch(`${this.baseUrl}/voice/interrupt`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to interrupt speaking: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async triggerVoiceShortcut(): Promise<Record<string, unknown>> {
+    const res = await fetch(`${this.baseUrl}/voice/shortcut`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to trigger voice shortcut: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async toggleWakeWord(enabled: boolean): Promise<{ status: string; wakeWordEnabled: boolean }> {
+    const res = await fetch(`${this.baseUrl}/voice/wake-word/toggle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to toggle wake-word: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async speakText(text: string): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}/voice/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to synthesize speech: ${res.status}`);
+    }
+    return res.blob();
+  }
+}
+
+export interface AudioDevice {
+  id: string;
+  name: string;
+  deviceType: "input" | "output";
+  isDefault: boolean;
+  isAvailable: boolean;
+  sampleRate?: number;
+  channels?: number;
+}
+
+export interface VoiceStatus {
+  state: "idle" | "listening" | "thinking" | "speaking" | "error";
+  microphone?: AudioDevice;
+  speaker?: AudioDevice;
+  wakeWordEnabled: boolean;
+  error?: SafeErrorPayload;
+}
+
+export interface VoiceDevicesResponse {
+  microphones: AudioDevice[];
+  speakers: AudioDevice[];
+}
+
+export interface PushToTalkStopResponse {
+  status: string;
+  state: string;
+  transcript: string;
+  response: string;
+  audio_bytes_length?: number;
 }
 
 export interface PlanStepItem {

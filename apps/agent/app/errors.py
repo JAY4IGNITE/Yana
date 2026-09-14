@@ -15,6 +15,11 @@ class ErrorCode(StrEnum):
     TIMEOUT_ERROR = "TIMEOUT_ERROR"
     NETWORK_ERROR = "NETWORK_ERROR"
     SYSTEM_ERROR = "SYSTEM_ERROR"
+    MICROPHONE_UNAVAILABLE = "MICROPHONE_UNAVAILABLE"
+    SPEAKER_UNAVAILABLE = "SPEAKER_UNAVAILABLE"
+    STT_ERROR = "STT_ERROR"
+    TTS_ERROR = "TTS_ERROR"
+    VOICE_PERMISSION_DENIED = "VOICE_PERMISSION_DENIED"
 
 
 class YanaBaseError(Exception):
@@ -91,3 +96,50 @@ class NetworkError(YanaBaseError):
 class SystemError(YanaBaseError):
     def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
         super().__init__(message, code=ErrorCode.SYSTEM_ERROR, details=details, **kwargs)
+
+
+class MicrophoneUnavailableError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MICROPHONE_UNAVAILABLE,
+            details=details,
+            retryable=True,
+            **kwargs,
+        )
+
+
+class SpeakerUnavailableError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SPEAKER_UNAVAILABLE,
+            details=details,
+            retryable=True,
+            **kwargs,
+        )
+
+
+class SpeechToTextError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message, code=ErrorCode.STT_ERROR, details=details, retryable=True, **kwargs
+        )
+
+
+class TextToSpeechError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message, code=ErrorCode.TTS_ERROR, details=details, retryable=True, **kwargs
+        )
+
+
+class VoicePermissionDeniedError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.VOICE_PERMISSION_DENIED,
+            details=details,
+            retryable=False,
+            **kwargs,
+        )

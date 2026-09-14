@@ -39,6 +39,14 @@ export const App: React.FC = () => {
     activeTask,
     handleCancelActiveTask,
     handleDismissActiveTask,
+    microphones,
+    speakers,
+    selectedMicId,
+    selectedSpeakerId,
+    wakeWordEnabled,
+    handleSelectMic,
+    handleSelectSpeaker,
+    handleToggleWakeWord,
   } = useProtocol();
 
   // Escape key collapses expanded assistant back to floating pet
@@ -100,12 +108,20 @@ export const App: React.FC = () => {
         onDeny={handleDenyPermission}
       />
 
-      {/* Settings Modal (Placeholder View as specified) */}
+      {/* Settings Modal with General & Audio hardware controls */}
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         agentConnected={agentConnected}
         agentUrl={agentUrl}
+        microphones={microphones}
+        speakers={speakers}
+        selectedMicId={selectedMicId}
+        selectedSpeakerId={selectedSpeakerId}
+        wakeWordEnabled={wakeWordEnabled}
+        onSelectMic={handleSelectMic}
+        onSelectSpeaker={handleSelectSpeaker}
+        onToggleWakeWord={handleToggleWakeWord}
       />
     </div>
   );
