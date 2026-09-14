@@ -11,11 +11,19 @@ def get_ai_provider() -> AIProvider:
     """Create or return the configured AIProvider based on application settings."""
     provider_name = settings.ai_provider.lower().strip()
 
+    if provider_name == "mock":
+        return MockAIProvider()
+
+    # When auto routing is enabled or multiple tiers are configured, use TieredAIRouter
+    if settings.ai_routing_mode in ("auto", "local", "heavy"):
+        from app.ai.router import TieredAIRouter
+
+        return TieredAIRouter()
+
     if provider_name in ("openai", "nvidia", "nim", "ollama", "groq"):
         api_key = settings.ai_api_key.get_secret_value()
         base_url = settings.ai_base_url
 
-        # Default NVIDIA NIM endpoint if provider is nvidia
         if provider_name in ("nvidia", "nim") and not base_url:
             base_url = "https://integrate.api.nvidia.com/v1"
 
@@ -33,5 +41,4 @@ def get_ai_provider() -> AIProvider:
             timeout_seconds=float(settings.tool_timeout_seconds),
         )
 
-    # Default to MockAIProvider for tests, offline mode, and safe fallback
     return MockAIProvider()

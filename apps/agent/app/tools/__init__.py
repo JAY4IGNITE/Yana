@@ -28,6 +28,7 @@ from app.tools.computer.mouse_tool import (
     ComputerMouseScrollTool,
 )
 from app.tools.computer.screen_tool import (
+    ComputerAnalyzeScreenVisionTool,
     ComputerFindUIElementTool,
     ComputerGetScreenDimensionsTool,
 )
@@ -103,6 +104,7 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     # Computer Window & Screen Tools
     comp_window = ComputerGetActiveWindowTool()
     comp_screenshot = ComputerScreenshotTool()
+    comp_vision = ComputerAnalyzeScreenVisionTool()
     comp_focus = ComputerFocusApplicationTool()
     comp_list_apps = ComputerListApplicationsTool()
     comp_dimensions = ComputerGetScreenDimensionsTool()
@@ -159,6 +161,7 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         # Computer Window & Screen
         comp_window,
         comp_screenshot,
+        comp_vision,
         comp_focus,
         comp_list_apps,
         comp_dimensions,

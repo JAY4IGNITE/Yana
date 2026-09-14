@@ -186,3 +186,52 @@ class ComputerFindUIElementTool(BaseTool):
             if verified
             else "UI element verification failed.",
         )
+
+
+class ComputerAnalyzeScreenVisionTool(BaseTool):
+    """Captures the active Windows desktop and performs multimodal vision analysis."""
+
+    name = "computer.analyze_screen"
+    category = "computer"
+    description = (
+        "Captures the active Windows desktop screen and analyzes it with multimodal vision LLM."
+    )
+    risk_level = RiskLevel.LOW
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "prompt": {
+                "type": "string",
+                "description": "Specific question or analysis to perform on the screen image",
+            }
+        },
+    }
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        prompt = arguments.get(
+            "prompt", "Analyze the active screen and describe the open applications and UI elements."
+        )
+        from app.ai.vision import vision_engine
+
+        analysis = await vision_engine.analyze_screen(prompt)
+        return {
+            "analysis": analysis,
+            "prompt": prompt,
+            "status": "success",
+        }
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        verified = (
+            isinstance(output, dict)
+            and isinstance(output.get("analysis"), str)
+            and len(output.get("analysis", "")) > 0
+        )
+        return VerificationResult(
+            task_id="computer",
+            tool_call_id="computer.analyze_screen",
+            verified=verified,
+            notes="Screen visual analysis successfully completed."
+            if verified
+            else "Screen visual analysis failed.",
+        )

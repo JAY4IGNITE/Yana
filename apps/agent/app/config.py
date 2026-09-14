@@ -11,7 +11,7 @@ class AgentSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="YANA_",
-        env_file=".env",
+        env_file=(".env", "../../.env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -25,20 +25,48 @@ class AgentSettings(BaseSettings):
     agent_port: int = 8765
     agent_log_level: str = "INFO"
 
-    # Storage
+    # Storage & Memory Engine
     storage_path: Path = Path("./data/yana.db")
+    memory_backend: Literal["sqlite", "postgres"] = "sqlite"
+    postgres_dsn: SecretStr = Field(default=SecretStr("postgresql://postgres:postgres@localhost:5432/yana"))
 
-    # AI Configuration (Secrets stored as SecretStr)
-    ai_provider: str = "mock"
+    # AI Configuration & Tiered Routing
+    ai_provider: str = "nvidia"  # Default active or primary
     ai_api_key: SecretStr = Field(default=SecretStr(""))
     ai_base_url: str | None = None
-    ai_model: str = "gpt-4o-mini"
+    ai_model: str = "meta/llama-3.2-11b-vision-instruct"
     ai_max_tokens: int = 2048
     ai_temperature: float = 0.7
     ai_system_prompt: str = (
         "You are YANA, a personal, native Windows AI desktop companion. "
         "Keep your responses concise, helpful, and natural."
     )
+
+    # 🧠 Local Tier (Ollama)
+    ai_local_provider: str = "ollama"
+    ai_local_base_url: str = "http://localhost:11434/v1"
+    ai_local_model: str = "llama3.2"
+
+    # 🚀 Heavy Reasoning & Multimodal Tier (NVIDIA NIM)
+    ai_heavy_provider: str = "nvidia"
+    ai_heavy_base_url: str = "https://integrate.api.nvidia.com/v1"
+    ai_heavy_model: str = "meta/llama-3.2-11b-vision-instruct"
+    ai_heavy_api_key: SecretStr = Field(default=SecretStr(""))
+
+    # ☁️ Fallback Cloud Tier
+    ai_fallback_provider: str = "openai"
+    ai_fallback_base_url: str | None = None
+    ai_fallback_model: str = "gpt-4o-mini"
+    ai_fallback_api_key: SecretStr = Field(default=SecretStr(""))
+
+    # Routing strategy: 'auto' (smart routing), 'local' (force local), 'heavy' (force NIM)
+    ai_routing_mode: Literal["auto", "local", "heavy", "fallback"] = "auto"
+
+    # 🎤 Voice & Audio Subsystem
+    stt_provider: str = "nvidia_parakeet"
+    stt_model: str = "nvidia/parakeet-ctc-1.1b-asr"
+    tts_provider: str = "edge_tts"
+    tts_voice: str = "en-US-AriaNeural"
 
     # Security & Policy
     permission_mode: Literal["strict", "permissive"] = "strict"
