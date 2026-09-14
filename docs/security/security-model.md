@@ -21,6 +21,11 @@ YANA is designed from the ground up for safe, secure personal desktop companion 
 13. **Controlled Shell Boundaries**: Terminal and PowerShell tools enforce dangerous command blocklists (e.g. `rm -rf`, `format`, `del /s /q`) and command sandboxing.
 14. **Execution Loop Guards**: Autonomous planning loops enforce a hard maximum iteration limit (`YANA_MAX_EXECUTION_LOOPS`, default: 10) to prevent runaway execution.
 15. **Guaranteed Task Cancellation**: Every running task supports immediate interruption and cancellation by the user.
+16. **Production Environment Hardening**: Production mode enforces `debug=False`, restricts CORS to local desktop IPC origins (`tauri://localhost`), binds exclusively to `127.0.0.1`, and strictly excludes simulation mock tools.
+17. **Safe Subprocess Execution**: Subprocesses are spawned using `create_subprocess_exec` with explicit parameter tokenization, eliminating intermediate `cmd.exe` shell expansion risks.
+18. **Anti-Restart Loop Circuit Breaker**: Agent supervisor trips after 3 consecutive failures within 60s, preventing runaway process loops.
+19. **Cryptographic Update Verification**: Update manifests require Ed25519 digital signatures over authenticated HTTPS before user-confirmed installation.
+20. **CurrentUser Sandbox Packaging**: Windows NSIS packaging operates in user scope (`CurrentUser`) without requiring administrative or UAC elevation.
 
 ---
 

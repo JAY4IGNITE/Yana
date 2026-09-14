@@ -29,6 +29,8 @@ pub enum ErrorCode {
 pub enum DesktopError {
     #[error("Validation error: {0}")]
     Validation(String),
+    #[error("Security error: {0}")]
+    Security(String),
     #[error("System error: {0}")]
     System(String),
     #[error("Agent communication error: {0}")]
@@ -48,6 +50,10 @@ impl From<DesktopError> for SafeCommandError {
         match err {
             DesktopError::Validation(msg) => SafeCommandError {
                 code: ErrorCode::ValidationError,
+                message: msg,
+            },
+            DesktopError::Security(msg) => SafeCommandError {
+                code: ErrorCode::PermissionError,
                 message: msg,
             },
             DesktopError::Agent(msg) => SafeCommandError {

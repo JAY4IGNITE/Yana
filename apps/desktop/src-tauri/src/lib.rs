@@ -1,6 +1,8 @@
+pub mod agent_supervisor;
 pub mod commands;
 pub mod error;
 pub mod protocol;
+pub mod updater;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -85,6 +87,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::agent::get_desktop_info,
             commands::agent::ping_agent,
+            commands::autostart::get_launch_at_startup,
+            commands::autostart::set_launch_at_startup,
             commands::system::set_window_mode,
             commands::system::set_always_on_top,
             commands::system::set_pet_scale,
@@ -93,6 +97,10 @@ pub fn run() {
             commands::system::toggle_window,
             commands::system::minimize_window,
             commands::system::close_window,
+            updater::check_for_updates,
+            agent_supervisor::get_agent_supervisor_status,
+            agent_supervisor::restart_agent_service,
+            agent_supervisor::report_agent_heartbeat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

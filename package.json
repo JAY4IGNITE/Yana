@@ -14,6 +14,9 @@
     "test:agent": "cd apps/agent && uv run pytest",
     "lint": "npm run --workspaces --if-present lint",
     "build": "npm run --workspaces --if-present build",
+    "verify:prod": "cd apps/agent && uv run python ../../scripts/verify_production.py",
+    "build:prod": "powershell -File scripts/build.ps1 -Production",
+    "build:installer": "powershell -File scripts/build.ps1 -Installer",
     "dev:desktop": "npm run --workspace=apps/desktop dev",
     "dev:tauri": "npm run --workspace=apps/desktop tauri:dev",
     "dev:agent": "cd apps/agent && uv run uvicorn app.main:app --reload --port 8765"

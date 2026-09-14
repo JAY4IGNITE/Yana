@@ -47,12 +47,20 @@ YANA UI (Feedback to user & pet animation)
 
 ## Subsystems
 
-### 1. The Desktop Companion Shell
-Operates as a frameless, high-DPI desktop overlay on Windows. Tauri 2 manages the native window lifecycle, stays on top when interacting, supports transparency and hardware-accelerated SVG animations, and communicates via Tauri IPC commands.
+### 1. The Desktop Companion Shell & Supervisor
+Operates as a frameless, high-DPI desktop overlay on Windows 10 and 11. Tauri 2 manages the native window lifecycle, stays on top when interacting, supports transparency and hardware-accelerated SVG animations, and communicates via Tauri IPC commands.
+- **Process Supervisor**: Monitors the Agent backend lifecycle. Features exponential backoff recovery and a 3-strike / 60-second circuit breaker to prevent restart loops.
+- **System Tray & Startup**: Full system tray integration with minimize-to-tray and native Windows Startup option (`HKCU\Run`).
 
 ### 2. The Core Agent Service
-Runs locally on `127.0.0.1:8765`, communicating via REST and WebSockets. Houses the LLM provider interface, prompt management, tool registries, and the multi-step task engine.
+Runs locally on `127.0.0.1:8765`, communicating via REST and WebSockets. Houses the LLM provider interface, prompt management, tool registries, voice pipeline, persistent SQLite memory, and the multi-step task engine.
+- **Environment Isolation**: Strictly distinguishes between `development`, `testing`, and `production`. In production, debug mode is forced `False`, simulation mock tools are excluded, and CORS is restricted to local desktop IPC origins.
 
 ### 3. Safety & Verification Loop
 Before any mutating OS operation (launching applications, executing terminal commands, modifying files), the Permission Manager determines if the operation requires explicit user consent based on risk level (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
 After execution, the Verifier inspects the output to confirm real-world success before the agent continues the plan.
+
+### 4. Secure Distribution & Updates
+- **Windows NSIS Packaging**: Generates standalone NSIS installer (`YANA_0.1.0_x64-setup.exe`) running in user space (`CurrentUser`) without requiring UAC elevation.
+- **Cryptographic Update Architecture**: Release manifests are verified over authenticated HTTPS channels using Ed25519 digital signatures, preventing unsafe self-updates and supply-chain tampering.
+

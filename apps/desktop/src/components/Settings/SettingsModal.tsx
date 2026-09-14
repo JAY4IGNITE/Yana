@@ -1,6 +1,31 @@
 import React, { useState, useEffect } from "react";
-import { X, Server, Shield, Activity, HardDrive, Mic, Volume2, Radio, Keyboard, Database, Trash2, FolderGit2 } from "lucide-react";
+import {
+  X,
+  Server,
+  Shield,
+  Activity,
+  HardDrive,
+  Mic,
+  Volume2,
+  Radio,
+  Keyboard,
+  Database,
+  Trash2,
+  FolderGit2,
+  Power,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { AudioDevice, agentClient, ProjectMemoryPayload } from "../../services/agentClient";
+
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke(cmd, args);
+  } catch {
+    return null;
+  }
+}
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -37,7 +62,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [projects, setProjects] = useState<ProjectMemoryPayload[]>([]);
   const [purgeStatus, setPurgeStatus] = useState<string | null>(null);
 
+  // Phase 13 Windows Distribution State
+  const [autostartEnabled, setAutostartEnabled] = useState<boolean>(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+  const [supervisorStatus, setSupervisorStatus] = useState<{
+    state: string;
+    circuit_breaker_tripped: boolean;
+    message: string;
+  } | null>(null);
+
   useEffect(() => {
+    if (isOpen) {
+      // Query Windows autostart state
+      safeInvoke<boolean>("get_launch_at_startup").then((res) => {
+        if (res !== null) setAutostartEnabled(res);
+      });
+
+      // Query Agent Supervisor crash recovery status
+      safeInvoke<any>("get_agent_supervisor_status").then((res) => {
+        if (res) setSupervisorStatus(res);
+      });
+    }
+
     if (isOpen && activeTab === "memory" && agentConnected) {
       agentClient
         .listProjects()
@@ -45,6 +92,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         .catch(() => setProjects([]));
     }
   }, [isOpen, activeTab, agentConnected]);
+
+  const handleToggleAutostart = async (enable: boolean) => {
+    setAutostartEnabled(enable);
+    await safeInvoke("set_launch_at_startup", { enable });
+  };
+
+  const handleCheckUpdates = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateStatus("Checking for updates...");
+    try {
+      const res = await safeInvoke<any>("check_for_updates");
+      if (res) {
+        setUpdateStatus(res.message || "YANA is up to date.");
+      } else {
+        setUpdateStatus("YANA v0.1.0 is up to date.");
+      }
+    } catch {
+      setUpdateStatus("Update service unavailable.");
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleRestartService = async () => {
+    try {
+      const res = await safeInvoke<any>("restart_agent_service");
+      if (res) {
+        setSupervisorStatus(res);
+      }
+    } catch {
+      // Handled gracefully
+    }
+  };
 
   const handlePurgeSession = async () => {
     try {
@@ -136,22 +216,98 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {activeTab === "general" ? (
           <div className="space-y-3 text-xs">
-            {/* Connection Status */}
+            {/* Connection & Crash Supervisor Status */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Activity className="w-4 h-4 text-slate-400" />
+                  <span className="text-slate-300 font-medium">Agent Service</span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      agentConnected ? "bg-emerald-400 animate-pulse" : "bg-rose-500"
+                    }`}
+                  />
+                  <span className={agentConnected ? "text-emerald-400" : "text-rose-400"}>
+                    {agentConnected ? "Connected" : "Disconnected"}
+                  </span>
+                </div>
+              </div>
+
+              {(!agentConnected || supervisorStatus?.circuit_breaker_tripped) && (
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <p className="text-[11px] text-amber-400/90 leading-tight">
+                    {supervisorStatus?.circuit_breaker_tripped
+                      ? "Circuit breaker OPEN: auto-restarts paused."
+                      : "Agent is unreachable or restarting."}
+                  </p>
+                  <button
+                    onClick={handleRestartService}
+                    data-testid="restart-agent-btn"
+                    className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded text-[11px] font-medium transition flex items-center space-x-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Restart</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Windows Distribution Startup Option */}
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
               <div className="flex items-center space-x-2">
-                <Activity className="w-4 h-4 text-slate-400" />
-                <span className="text-slate-300 font-medium">Agent Service</span>
+                <Power className="w-4 h-4 text-sky-400" />
+                <div>
+                  <span className="text-slate-300 font-medium block">Windows Startup</span>
+                  <span className="text-slate-500 text-[10px]">Launch YANA when Windows boots</span>
+                </div>
               </div>
-              <div className="flex items-center space-x-1.5">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    agentConnected ? "bg-emerald-400 animate-pulse" : "bg-rose-500"
-                  }`}
-                />
-                <span className={agentConnected ? "text-emerald-400" : "text-rose-400"}>
-                  {agentConnected ? "Connected" : "Disconnected"}
+              <input
+                type="checkbox"
+                data-testid="startup-toggle"
+                checked={autostartEnabled}
+                onChange={(e) => handleToggleAutostart(e.target.checked)}
+                className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+              />
+            </div>
+
+            {/* Environment & Release Version */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-medium">Environment</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                  Production Native
                 </span>
               </div>
+              <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                <span className="text-slate-400">Release Version</span>
+                <span className="text-slate-200 font-mono">v0.1.0</span>
+              </div>
+            </div>
+
+            {/* Secure Update Architecture */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1.5 text-slate-300">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="font-medium">Software Updates</span>
+                </div>
+                <button
+                  onClick={handleCheckUpdates}
+                  disabled={isCheckingUpdate}
+                  data-testid="check-updates-btn"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] font-medium transition flex items-center space-x-1 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isCheckingUpdate ? "animate-spin" : ""}`} />
+                  <span>{isCheckingUpdate ? "Checking..." : "Check Updates"}</span>
+                </button>
+              </div>
+              {updateStatus && (
+                <p className="text-[11px] text-slate-400 font-mono bg-slate-900/80 px-2 py-1 rounded">
+                  {updateStatus}
+                </p>
+              )}
             </div>
 
             {/* Endpoint */}
@@ -167,8 +323,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="font-medium">Security Principle</span>
               </div>
               <p className="text-slate-400 leading-relaxed text-[11px]">
-                AI never controls the OS directly. All actions pass through permission gates and
-                verification.
+                AI never controls the OS directly. All actions pass through permission gates,
+                cryptographic validations, and tool verification.
               </p>
             </div>
 

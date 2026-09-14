@@ -12,7 +12,7 @@ $hasError = $false
 # 1. Run Python Agent Tests
 Write-Host "`n[1/3] Running Python Agent Tests (pytest)..." -ForegroundColor Yellow
 Push-Location "$PSScriptRoot\..\apps\agent"
-& ".\.venv\Scripts\pytest.exe" -v
+uv run pytest -v
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[FAIL] Python agent tests failed!" -ForegroundColor Red
     $hasError = $true
@@ -37,6 +37,7 @@ Pop-Location
 Write-Host "`n[3/3] Running Rust Core Tests (cargo test)..." -ForegroundColor Yellow
 $cargoPath = "$HOME\.cargo\bin\cargo.exe"
 if (Test-Path $cargoPath) {
+    $env:PATH = "$HOME\.cargo\bin;$env:PATH"
     Push-Location "$PSScriptRoot\..\apps\desktop\src-tauri"
     & $cargoPath test
     if ($LASTEXITCODE -ne 0) {

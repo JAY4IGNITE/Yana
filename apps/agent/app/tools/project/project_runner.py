@@ -135,13 +135,15 @@ class ProjectRunTool(BaseTool):
         status = "completed"
 
         try:
-            # Launch via powershell with proper flags
-            shell_cmd = (
-                f"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
-                f"-Command {determined_cmd}"
-            )
-            proc = await asyncio.create_subprocess_shell(
-                shell_cmd,
+            # Launch via powershell with proper flags directly without intermediate shell
+            proc = await asyncio.create_subprocess_exec(
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                determined_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(target_dir),

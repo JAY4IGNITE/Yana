@@ -1,14 +1,13 @@
-"""Application Configuration for YANA Agent."""
-
+import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AgentSettings(BaseSettings):
-    """Strongly typed application configuration."""
+    """Strongly typed application configuration with environment separation."""
 
     model_config = SettingsConfigDict(
         env_prefix="YANA_",
@@ -17,8 +16,8 @@ class AgentSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Application Environment
-    env: Literal["development", "staging", "production"] = "development"
+    # Application Environment: development, testing, or production
+    env: Literal["development", "testing", "production"] = "development"
     debug: bool = True
 
     # Network / Server
@@ -45,6 +44,22 @@ class AgentSettings(BaseSettings):
     permission_mode: Literal["strict", "permissive"] = "strict"
     max_execution_loops: int = 10
     tool_timeout_seconds: int = 30
+
+    def model_post_init(self, __context: Any) -> None:
+        """Enforce production security invariants upon settings initialization."""
+        super().model_post_init(__context)
+        if self.env == "production":
+            # In production, debug mode must ALWAYS be disabled
+            self.debug = False
+            # Host must strictly bind to localhost for IPC security
+            self.agent_host = "127.0.0.1"
+            # Route persistent storage to user LocalAppData if default relative path
+            if self.storage_path == Path("./data/yana.db"):
+                local_app_data = os.environ.get("LOCALAPPDATA")
+                if local_app_data:
+                    self.storage_path = Path(local_app_data) / "YANA" / "data" / "yana.db"
+                else:
+                    self.storage_path = Path.home() / ".yana" / "data" / "yana.db"
 
     def safe_dict(self) -> dict[str, object]:
         """Export settings with sensitive credentials redacted."""

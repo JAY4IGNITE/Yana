@@ -51,10 +51,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for desktop UI communication (Tauri uses localhost / tauri://localhost)
+
+def get_cors_origins(env: str | None = None) -> list[str]:
+    """Determine allowed CORS origins based on application environment."""
+    target_env = env or settings.env
+    if target_env == "production":
+        return ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"]
+    return ["*"]
+
+
+allowed_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

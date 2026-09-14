@@ -187,12 +187,20 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         br_scroll,
         br_download,
         br_info,
-        # Simulation mocks for pipeline testing
-        MockActionTool(),
-        MockWaitTool(),
-        MockVerifyTool(),
-        MockFailingTool(),
     ]
+
+    # In production, mock simulation tools are strictly excluded
+    from app.config import settings
+
+    if settings.env != "production":
+        all_tools.extend(
+            [
+                MockActionTool(),
+                MockWaitTool(),
+                MockVerifyTool(),
+                MockFailingTool(),
+            ]
+        )
 
     for tool in all_tools:
         try:
