@@ -1,8 +1,5 @@
 """NVIDIA Parakeet Speech-To-Text (STT) Provider."""
 
-import io
-from typing import Any
-
 import httpx
 
 from app.config import settings
@@ -28,9 +25,7 @@ class NvidiaParakeetSTTProvider(SpeechToTextProvider):
             or settings.ai_api_key.get_secret_value()
         )
         self.base_url = (
-            base_url
-            or settings.ai_heavy_base_url
-            or "https://integrate.api.nvidia.com/v1"
+            base_url or settings.ai_heavy_base_url or "https://integrate.api.nvidia.com/v1"
         )
         self.model = model or settings.stt_model or "nvidia/parakeet-ctc-1.1b-asr"
 

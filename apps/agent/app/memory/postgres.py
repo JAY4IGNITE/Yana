@@ -19,15 +19,15 @@ class PostgresDatabaseManager:
         try:
             import asyncpg
 
-            self._pool = await asyncpg.create_pool(dsn=self.dsn, min_size=1, max_size=5, timeout=3.0)
+            self._pool = await asyncpg.create_pool(
+                dsn=self.dsn, min_size=1, max_size=5, timeout=3.0
+            )
             self._connected = True
             logger.info("Successfully connected to PostgreSQL cluster.")
             await self._init_schema()
             return True
         except Exception as e:
-            logger.warning(
-                "PostgreSQL connection unavailable (%s). Falling back to SQLite.", e
-            )
+            logger.warning("PostgreSQL connection unavailable (%s). Falling back to SQLite.", e)
             self._connected = False
             return False
 

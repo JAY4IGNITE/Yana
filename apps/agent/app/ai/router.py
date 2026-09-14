@@ -1,15 +1,15 @@
-"""Tiered AI Router coordinating Local LLM (Ollama), Heavy Reasoning (NVIDIA NIM), and Cloud Fallback."""
+"""Tiered AI Router coordinating Local LLM (Ollama), Heavy Reasoning (NVIDIA NIM),
+and Cloud Fallback.
+"""
 
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import Any
 
 from app.ai.base import AIProvider
 from app.ai.mock_provider import MockAIProvider
 from app.ai.models import Message
 from app.ai.openai_provider import OpenAICompatibleProvider
 from app.config import settings
-from app.errors import AIError
 from app.logger import logger
 
 
@@ -28,11 +28,12 @@ class TieredAIRouter(AIProvider):
         self._fallback_provider: AIProvider | None = None
         self._is_ollama_ready: bool | None = None
         self._last_ollama_check: float = 0.0
+        self._last_active_tier: str = "ollama-local"
+        self._last_active_model: str = settings.ai_local_model
 
         # Initialize Heavy Reasoning (NVIDIA NIM)
         heavy_key = (
-            settings.ai_heavy_api_key.get_secret_value()
-            or settings.ai_api_key.get_secret_value()
+            settings.ai_heavy_api_key.get_secret_value() or settings.ai_api_key.get_secret_value()
         )
         heavy_base_url = settings.ai_heavy_base_url or settings.ai_base_url
         heavy_model = settings.ai_heavy_model or settings.ai_model
@@ -63,12 +64,20 @@ class TieredAIRouter(AIProvider):
         # Initialize Fallback Provider
         self._fallback_provider = MockAIProvider()
 
+    @property
+    def active_tier(self) -> str:
+        return self._last_active_tier
+
+    @property
+    def active_model(self) -> str:
+        return self._last_active_model
+
     async def _check_ollama_status(self) -> bool:
         """Fast check if Ollama is running and has models available."""
         import time
 
         now = time.time()
-        if self._is_ollama_ready is not None and (now - self._last_ollama_check) < 30:
+        if self._is_ollama_ready is not None and (now - self._last_ollama_check) < 15:
             return self._is_ollama_ready
 
         self._last_ollama_check = now
@@ -76,7 +85,8 @@ class TieredAIRouter(AIProvider):
             if not self._local_provider:
                 self._is_ollama_ready = False
                 return False
-            is_ok = await asyncio.wait_for(self._local_provider.health_check(), timeout=1.5)
+            models = await asyncio.wait_for(self._local_provider.client.models.list(), timeout=3.5)
+            is_ok = bool(models.data and len(models.data) > 0)
             self._is_ollama_ready = is_ok
             return is_ok
         except Exception:
@@ -122,24 +132,25 @@ class TieredAIRouter(AIProvider):
         if self.routing_mode == "fallback":
             return self._fallback_provider or MockAIProvider(), "fallback"
 
-        # Auto routing mode
+        choice: tuple[AIProvider, str]
         requires_heavy = self._is_heavy_reasoning_required(messages)
+        ollama_available = await self._check_ollama_status()
+
         if requires_heavy and self._heavy_provider:
             logger.info("TieredAIRouter: routing to NVIDIA NIM for heavy reasoning/planning.")
-            return self._heavy_provider, "nvidia-heavy"
-
-        # Try local Ollama first for light/conversational tasks
-        ollama_available = await self._check_ollama_status()
-        if ollama_available and self._local_provider:
+            choice = (self._heavy_provider, "nvidia-heavy")
+        elif ollama_available and self._local_provider:
             logger.info("TieredAIRouter: routing to local Ollama.")
-            return self._local_provider, "ollama-local"
-
-        # Fallback to NVIDIA NIM if Ollama has no models or is offline
-        if self._heavy_provider:
+            choice = (self._local_provider, "ollama-local")
+        elif self._heavy_provider:
             logger.info("TieredAIRouter: Ollama unavailable/empty, routing to NVIDIA NIM.")
-            return self._heavy_provider, "nvidia-heavy"
+            choice = (self._heavy_provider, "nvidia-heavy")
+        else:
+            choice = (self._fallback_provider or MockAIProvider(), "mock-fallback")
 
-        return self._fallback_provider or MockAIProvider(), "mock-fallback"
+        self._last_active_tier = choice[1]
+        self._last_active_model = getattr(choice[0], "model", settings.ai_model)
+        return choice
 
     async def send_message(
         self,
@@ -179,15 +190,11 @@ class TieredAIRouter(AIProvider):
         first_token_received = False
 
         try:
-            async for token in primary_provider.stream_message(
-                messages, system_prompt, session_id
-            ):
+            async for token in primary_provider.stream_message(messages, system_prompt, session_id):
                 first_token_received = True
                 yield token
         except Exception as primary_err:
-            logger.warning(
-                "TieredAIRouter: %s stream failed (%s).", tier_name, primary_err
-            )
+            logger.warning("TieredAIRouter: %s stream failed (%s).", tier_name, primary_err)
             if not first_token_received:
                 # If failed before streaming started, try secondary provider
                 backup_provider = (
@@ -221,10 +228,6 @@ class TieredAIRouter(AIProvider):
 
     async def health_check(self) -> bool:
         """Check overall router health across providers."""
-        heavy_ok = (
-            await self._heavy_provider.health_check()
-            if self._heavy_provider
-            else False
-        )
+        heavy_ok = await self._heavy_provider.health_check() if self._heavy_provider else False
         local_ok = await self._check_ollama_status()
         return heavy_ok or local_ok

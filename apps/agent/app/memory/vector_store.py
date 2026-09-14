@@ -1,7 +1,6 @@
 """Local Vector Store and Semantic Memory Engine for YANA."""
 
 import json
-import math
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,8 @@ class LocalVectorStore:
 
     Embeddings can be sourced from:
     1. Local Ollama embedding model (e.g. nomic-embed-text / all-minilm) if available.
-    2. Dense character n-gram hashing vectorizer (always available offline with zero external calls).
+    2. Dense character n-gram hashing vectorizer (always available offline
+       with zero external calls).
     """
 
     def __init__(self, db_path: Path | None = None) -> None:
@@ -102,7 +102,9 @@ class LocalVectorStore:
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO vector_memories (id, key, content, category, embedding, metadata)
+                INSERT OR REPLACE INTO vector_memories (
+                    id, key, content, category, embedding, metadata
+                )
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (mid, key, content, category, vec_json, meta_json),
@@ -126,12 +128,18 @@ class LocalVectorStore:
         with self._get_connection() as conn:
             if category:
                 cursor = conn.execute(
-                    "SELECT id, key, content, category, embedding, metadata, created_at FROM vector_memories WHERE category = ?",
+                    """
+                    SELECT id, key, content, category, embedding, metadata, created_at
+                    FROM vector_memories WHERE category = ?
+                    """,
                     (category,),
                 )
             else:
                 cursor = conn.execute(
-                    "SELECT id, key, content, category, embedding, metadata, created_at FROM vector_memories"
+                    """
+                    SELECT id, key, content, category, embedding, metadata, created_at
+                    FROM vector_memories
+                    """
                 )
             rows = cursor.fetchall()
 

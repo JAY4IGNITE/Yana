@@ -201,8 +201,12 @@ class ConversationRepository:
             cursor = await conn.execute(
                 """
                 SELECT id, conversation_id, role, content, timestamp, metadata
-                FROM messages WHERE conversation_id = ?
-                ORDER BY timestamp ASC LIMIT ?
+                FROM (
+                    SELECT id, conversation_id, role, content, timestamp, metadata
+                    FROM messages WHERE conversation_id = ?
+                    ORDER BY timestamp DESC LIMIT ?
+                ) sub
+                ORDER BY timestamp ASC
                 """,
                 (conversation_id, limit),
             )

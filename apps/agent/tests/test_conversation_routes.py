@@ -10,7 +10,10 @@ from app.memory.db import db_manager
 
 
 @pytest.fixture(autouse=True)
-async def init_test_db() -> None:
+async def init_test_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai.mock_provider import MockAIProvider
+
+    monkeypatch.setattr("app.api.conversation_routes.get_ai_provider", lambda: MockAIProvider())
     await db_manager.initialize()
 
 

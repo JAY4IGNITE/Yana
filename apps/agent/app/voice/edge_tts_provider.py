@@ -1,6 +1,5 @@
 """Natural Text-To-Speech (TTS) engine powered by Microsoft Edge Neural Voices."""
 
-import asyncio
 import io
 from typing import Any
 

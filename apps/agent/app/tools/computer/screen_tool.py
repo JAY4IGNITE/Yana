@@ -210,7 +210,8 @@ class ComputerAnalyzeScreenVisionTool(BaseTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate(arguments)
         prompt = arguments.get(
-            "prompt", "Analyze the active screen and describe the open applications and UI elements."
+            "prompt",
+            "Analyze the active screen and describe the open applications and UI elements.",
         )
         from app.ai.vision import vision_engine
 

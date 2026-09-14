@@ -1,5 +1,6 @@
 """Voice recognition and synthesis module boundary for YANA."""
 
+from app.config import settings
 from app.voice.base import (
     AudioDevice,
     AudioDeviceType,
@@ -10,6 +11,7 @@ from app.voice.base import (
     WakeWordProvider,
 )
 from app.voice.device_manager import AudioDeviceManager
+from app.voice.edge_tts_provider import NaturalEdgeTTSProvider
 from app.voice.mock_providers import (
     MockSpeechToTextProvider,
     MockTextToSpeechProvider,
@@ -17,8 +19,6 @@ from app.voice.mock_providers import (
     MockWakeWordProvider,
     create_dummy_wav_bytes,
 )
-from app.config import settings
-from app.voice.edge_tts_provider import NaturalEdgeTTSProvider
 from app.voice.parakeet_stt import NvidiaParakeetSTTProvider
 from app.voice.pipeline import VoicePipeline
 

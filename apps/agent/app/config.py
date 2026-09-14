@@ -28,7 +28,9 @@ class AgentSettings(BaseSettings):
     # Storage & Memory Engine
     storage_path: Path = Path("./data/yana.db")
     memory_backend: Literal["sqlite", "postgres"] = "sqlite"
-    postgres_dsn: SecretStr = Field(default=SecretStr("postgresql://postgres:postgres@localhost:5432/yana"))
+    postgres_dsn: SecretStr = Field(
+        default=SecretStr("postgresql://postgres:postgres@localhost:5432/yana")
+    )
 
     # AI Configuration & Tiered Routing
     ai_provider: str = "nvidia"  # Default active or primary
@@ -38,8 +40,10 @@ class AgentSettings(BaseSettings):
     ai_max_tokens: int = 2048
     ai_temperature: float = 0.7
     ai_system_prompt: str = (
-        "You are YANA, a personal, native Windows AI desktop companion. "
-        "Keep your responses concise, helpful, and natural."
+        "You are YANA, an intelligent, helpful, and native Windows AI desktop companion. "
+        "Directly answer questions, solve problems, and help the user. "
+        "Be direct, accurate, and concise. Do not repeat introductions or re-introduce "
+        "yourself unless explicitly asked."
     )
 
     # 🧠 Local Tier (Ollama)

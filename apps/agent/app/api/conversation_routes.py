@@ -142,14 +142,16 @@ async def stream_conversation(
 
             # Generation completed normally or was cancelled
             full_response = "".join(accumulated_chunks)
+            active_provider = getattr(provider, "active_tier", None) or settings.ai_provider
+            active_model = getattr(provider, "active_model", None) or settings.ai_model
             assistant_msg = Message(
                 id=assistant_msg_id,
                 conversation_id=req.conversation_id,
                 role=MessageRole.ASSISTANT,
                 content=full_response,
                 metadata=MessageMetadata(
-                    provider=settings.ai_provider,
-                    model=settings.ai_model,
+                    provider=active_provider,
+                    model=active_model,
                     is_streaming=False,
                 ),
             )

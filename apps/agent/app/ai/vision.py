@@ -2,8 +2,6 @@
 
 import base64
 import io
-from pathlib import Path
-from typing import Any
 
 from openai import AsyncOpenAI
 from PIL import Image
@@ -17,10 +15,7 @@ class MultimodalVisionEngine:
     """Processes images and desktop screenshots using multimodal vision LLMs."""
 
     def __init__(self) -> None:
-        key = (
-            settings.ai_heavy_api_key.get_secret_value()
-            or settings.ai_api_key.get_secret_value()
-        )
+        key = settings.ai_heavy_api_key.get_secret_value() or settings.ai_api_key.get_secret_value()
         base_url = settings.ai_heavy_base_url or settings.ai_base_url
         self.model = settings.ai_heavy_model or "meta/llama-3.2-11b-vision-instruct"
 
@@ -32,8 +27,8 @@ class MultimodalVisionEngine:
 
     def encode_image_bytes(self, image_bytes: bytes, max_dimension: int = 1280) -> str:
         """Compress and encode image bytes into a base64 JPEG string."""
-        with Image.open(io.BytesIO(image_bytes)) as img:
-            img = img.convert("RGB")
+        with Image.open(io.BytesIO(image_bytes)) as raw_img:
+            img = raw_img.convert("RGB")
             # Resize if large to preserve bandwidth
             if max(img.width, img.height) > max_dimension:
                 img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
