@@ -32,6 +32,7 @@ export const PermissionModal: React.FC<PermissionModalProps> = ({
           bg: "bg-amber-500/20 text-amber-400 border-amber-500/40",
           icon: <AlertTriangle className="w-4 h-4 text-amber-400" />,
         };
+      case "SAFE":
       case "LOW":
       default:
         return {
@@ -43,6 +44,17 @@ export const PermissionModal: React.FC<PermissionModalProps> = ({
 
   const badge = getRiskBadge(request.riskLevel);
 
+  const getAffectedResources = (req: PermissionRequest): string => {
+    if (!req.arguments || Object.keys(req.arguments).length === 0) {
+      return "Local System Environment";
+    }
+    if (req.arguments.path) return String(req.arguments.path);
+    if (req.arguments.command) return String(req.arguments.command);
+    if (req.arguments.app_name) return String(req.arguments.app_name);
+    if (req.arguments.target) return String(req.arguments.target);
+    return JSON.stringify(req.arguments);
+  };
+
   return (
     <div
       data-testid="permission-modal"
@@ -53,7 +65,10 @@ export const PermissionModal: React.FC<PermissionModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center space-x-2">
             <span className="p-2 rounded-xl bg-slate-800/80">{badge.icon}</span>
-            <h3 className="text-base font-semibold text-white">Permission Required</h3>
+            <div>
+              <h3 className="text-base font-bold tracking-wider text-white">YANA CONFIRMATION</h3>
+              <p className="text-[11px] text-slate-400">Permission Required</p>
+            </div>
           </div>
           <span
             className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badge.bg}`}
@@ -66,35 +81,28 @@ export const PermissionModal: React.FC<PermissionModalProps> = ({
         <div className="space-y-3">
           <div>
             <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">
-              Requested Tool
+              Action
             </p>
-            <p className="text-sm font-mono font-semibold text-sky-300 mt-0.5">
-              {request.tool}
+            <p className="text-sm font-semibold text-slate-200 mt-0.5">
+              {request.description || request.tool}
+            </p>
+            <p className="text-[11px] font-mono text-sky-400 mt-0.5">
+              Tool: {request.tool}
             </p>
           </div>
 
           <div>
             <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">
-              Action Description
+              Affected resources
             </p>
-            <p className="text-sm text-slate-200 mt-0.5">{request.description}</p>
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300 mt-1 break-all max-h-28 overflow-y-auto">
+              {getAffectedResources(request)}
+            </div>
           </div>
 
-          {/* Arguments preview */}
-          {request.arguments && Object.keys(request.arguments).length > 0 && (
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400 font-medium mb-1">
-                Parameters
-              </p>
-              <pre className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto max-h-32">
-                {JSON.stringify(request.arguments, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          <p className="text-xs text-slate-400 italic">
-            YANA enforces that the AI never directly controls the operating system.
-            Authorize only if you trust this action.
+          <p className="text-[11px] text-slate-400 italic leading-relaxed">
+            YANA security boundary: The AI cannot access OS functions directly.
+            Confirm only if you trust this action on your system.
           </p>
         </div>
 
@@ -105,14 +113,14 @@ export const PermissionModal: React.FC<PermissionModalProps> = ({
             className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition"
           >
             <XCircle className="w-4 h-4" />
-            <span>Deny</span>
+            <span>Cancel</span>
           </button>
           <button
             onClick={() => onGrant(request.toolCallId)}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-sm font-semibold shadow-lg shadow-sky-500/20 transition"
+            className="flex items-center space-x-1.5 px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-sm font-semibold shadow-lg shadow-sky-500/20 transition"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Authorize & Execute</span>
+            <span>Allow</span>
           </button>
         </div>
       </div>

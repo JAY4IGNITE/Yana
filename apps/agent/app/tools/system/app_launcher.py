@@ -39,7 +39,7 @@ class SystemOpenApplicationTool(BaseTool):
     name = "system.open_application"
     category = "system"
     description = "Launches a supported Windows desktop application by name or executable path."
-    risk_level = RiskLevel.MEDIUM
+    risk_level = RiskLevel.LOW
     input_schema = {
         "type": "object",
         "properties": {
@@ -336,6 +336,81 @@ class SystemGetInfoTool(BaseTool):
             notes="System telemetry successfully retrieved."
             if verified
             else "System telemetry verification failed.",
+        )
+
+
+class SystemShutdownTool(BaseTool):
+    """Safely requests system shutdown or restart with explicit high-risk gating."""
+
+    name = "system.shutdown"
+    category = "system"
+    description = "Requests system shutdown, restart, or sign-out with user confirmation."
+    risk_level = RiskLevel.HIGH
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["shutdown", "restart", "abort"],
+                "default": "shutdown",
+                "description": "Shutdown action to perform",
+            },
+            "timeout_seconds": {
+                "type": "integer",
+                "default": 60,
+                "description": "Delay in seconds before shutdown occurs",
+            },
+            "simulate": {
+                "type": "boolean",
+                "default": True,
+                "description": "Simulate without executing native OS shutdown command",
+            },
+        },
+    }
+
+    def validate(self, arguments: dict[str, Any]) -> None:
+        super().validate(arguments)
+        action = arguments.get("action", "shutdown")
+        if action not in {"shutdown", "restart", "abort"}:
+            raise ValidationError("Action must be 'shutdown', 'restart', or 'abort'.")
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(arguments)
+        action = arguments.get("action", "shutdown")
+        timeout_sec = arguments.get("timeout_seconds", 60)
+        simulate = bool(arguments.get("simulate", True))
+
+        if simulate:
+            return {
+                "status": "simulated",
+                "action": action,
+                "timeout_seconds": timeout_sec,
+                "message": f"Simulation: system {action} scheduled in {timeout_sec}s.",
+            }
+
+        flag = "/s" if action == "shutdown" else ("/r" if action == "restart" else "/a")
+        cmd = ["shutdown.exe", flag, "/t", str(timeout_sec)]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        return {
+            "status": "scheduled" if proc.returncode == 0 else "failed",
+            "action": action,
+            "exit_code": proc.returncode,
+            "message": stdout.decode("utf-8", errors="replace").strip()
+            or stderr.decode("utf-8", errors="replace").strip(),
+        }
+
+    async def verify(self, arguments: dict[str, Any], output: Any) -> VerificationResult:
+        verified = isinstance(output, dict) and output.get("status") in {"simulated", "scheduled"}
+        return VerificationResult(
+            task_id="system",
+            tool_call_id="system.shutdown",
+            verified=verified,
+            notes="Shutdown command verified." if verified else "Shutdown verification failed.",
         )
 
 

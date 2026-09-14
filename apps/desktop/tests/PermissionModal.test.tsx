@@ -29,26 +29,29 @@ describe("PermissionModal Component", () => {
       <PermissionModal request={sampleRequest} onGrant={vi.fn()} onDeny={vi.fn()} />
     );
     expect(screen.getByTestId("permission-modal")).toBeInTheDocument();
+    expect(screen.getByText("YANA CONFIRMATION")).toBeInTheDocument();
     expect(screen.getByText("Permission Required")).toBeInTheDocument();
-    expect(screen.getByText("terminal.run_command")).toBeInTheDocument();
     expect(screen.getByText("HIGH RISK")).toBeInTheDocument();
+    expect(screen.getByText("Action")).toBeInTheDocument();
+    expect(screen.getByText("Affected resources")).toBeInTheDocument();
+    expect(screen.getByText("dir")).toBeInTheDocument();
   });
 
-  it("calls onGrant with toolCallId on authorize button click", () => {
+  it("calls onGrant with toolCallId on allow button click", () => {
     const handleGrant = vi.fn();
     render(
       <PermissionModal request={sampleRequest} onGrant={handleGrant} onDeny={vi.fn()} />
     );
-    fireEvent.click(screen.getByText("Authorize & Execute"));
+    fireEvent.click(screen.getByText("Allow"));
     expect(handleGrant).toHaveBeenCalledWith("call-1");
   });
 
-  it("calls onDeny with toolCallId on deny button click", () => {
+  it("calls onDeny with toolCallId on cancel button click", () => {
     const handleDeny = vi.fn();
     render(
       <PermissionModal request={sampleRequest} onGrant={vi.fn()} onDeny={handleDeny} />
     );
-    fireEvent.click(screen.getByText("Deny"));
+    fireEvent.click(screen.getByText("Cancel"));
     expect(handleDeny).toHaveBeenCalledWith("call-1", "User rejected permission");
   });
 });

@@ -57,8 +57,11 @@ class ToolRegistry:
         return self.validate(name, arguments)
 
     async def execute(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Validate arguments and execute the tool."""
+        """Validate arguments, enforce authorization, and execute the tool."""
         tool = self.validate(name, arguments)
+        from app.permissions.manager import permission_manager
+
+        permission_manager.enforce_permission(tool, f"direct-{tool.name}", arguments)
         return await tool.execute(arguments)
 
 

@@ -32,12 +32,22 @@ PROTECTED_SYSTEM_PROCESSES = {
 
 # Sensitive path components that must not be inspected or accessed
 SENSITIVE_PATH_PATTERNS = [
-    re.compile(r"\\system32\\config\\(sam|system|security|software)", re.IGNORECASE),
-    re.compile(r"\\\.ssh\\(id_rsa|id_ed25519|id_ecdsa|id_dsa|authorized_keys)", re.IGNORECASE),
-    re.compile(r"\\\.aws\\credentials", re.IGNORECASE),
-    re.compile(r"\\system volume information", re.IGNORECASE),
-    re.compile(r"\\\$recycle\.bin", re.IGNORECASE),
-    re.compile(r"\\credentials\.json$", re.IGNORECASE),
+    re.compile(r"[\\/]system32[\\/]config[\\/](sam|system|security|software)", re.IGNORECASE),
+    re.compile(
+        r"[\\/]\.ssh[\\/](id_rsa|id_ed25519|id_ecdsa|id_dsa|authorized_keys|known_hosts)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"[\\/]\.aws[\\/](credentials|config)", re.IGNORECASE),
+    re.compile(r"[\\/]\.azure[\\/]", re.IGNORECASE),
+    re.compile(r"[\\/]\.kube[\\/]config", re.IGNORECASE),
+    re.compile(r"[\\/]system volume information", re.IGNORECASE),
+    re.compile(r"[\\/]\$recycle\.bin", re.IGNORECASE),
+    re.compile(r"[\\/]credentials(\.json|\.yml|\.xml)?$", re.IGNORECASE),
+    re.compile(r"[\\/]secrets(\.json|\.yml|\.toml)?$", re.IGNORECASE),
+    re.compile(r"^[a-zA-Z]:[\\/]windows([\\/]|$)", re.IGNORECASE),
+    re.compile(r"^[a-zA-Z]:[\\/]program files([\\/]|$)", re.IGNORECASE),
+    re.compile(r"^[a-zA-Z]:[\\/]program files \(x86\)([\\/]|$)", re.IGNORECASE),
+    re.compile(r"^[\\/](etc|usr|bin|sbin|var|sys|proc|dev|boot)([\\/]|$)", re.IGNORECASE),
 ]
 
 # Exact sensitive filenames
@@ -49,7 +59,25 @@ SENSITIVE_FILENAMES = {
     "id_ed25519",
     "id_ecdsa",
     "id_dsa",
+    "authorized_keys",
+    "known_hosts",
     ".env",
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    ".env.test",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    "credentials",
+    "credentials.json",
+    "credentials.yml",
+    "credentials.xml",
+    "secrets.json",
+    "secrets.yml",
+    "secrets.toml",
+    "vault.token",
+    "shadow",
 }
 
 # Destructive and dangerous terminal commands
@@ -59,10 +87,16 @@ PROHIBITED_TERMINAL_PATTERNS = [
     re.compile(r"\bdel\s+/[sS]\s+/[qQ]", re.IGNORECASE),
     re.compile(r"\brmdir\s+/[sS]\s+/[qQ]", re.IGNORECASE),
     re.compile(r"\brmdir\s+/[sS]", re.IGNORECASE),
-    re.compile(r"\brm\s+-[rRfF]{2,}\s+(/|\*|c:\\)", re.IGNORECASE),
+    re.compile(r"\brm\s+-[rRfF]{1,}\s+(/|\*|c:\\)", re.IGNORECASE),
     re.compile(r":\(\)\s*\{\s*:\|:&\s*\}\s*;\s*:", re.IGNORECASE),  # fork bomb
     re.compile(r"\bdiskpart\b", re.IGNORECASE),
     re.compile(r"\bbcdedit\b", re.IGNORECASE),
+    re.compile(r"\breg\s+delete\b", re.IGNORECASE),
+    re.compile(r"\btakeown\b", re.IGNORECASE),
+    re.compile(r"\bicacls\s+.*\/grant\b", re.IGNORECASE),
+    re.compile(r"(curl|wget)\s+.*\|\s*(bash|sh|cmd|powershell|pwsh)", re.IGNORECASE),
+    re.compile(r"(Invoke-Expression|iex)\s*\(.*(Net\.WebClient|DownloadString)", re.IGNORECASE),
+    re.compile(r"(iwr|Invoke-WebRequest)\s+.*\|\s*(iex|Invoke-Expression)", re.IGNORECASE),
 ]
 
 # Commands that hang waiting for interactive input without commands
@@ -97,19 +131,41 @@ SECRET_PATTERNS = [
 def is_sensitive_path(path: Path) -> bool:
     """Check if the given canonical path points to a sensitive credential or system hive."""
     path_str = str(path).lower()
+    path_posix = path.as_posix().lower()
     name = path.name.lower()
 
-    if name in SENSITIVE_FILENAMES:
+    if name in SENSITIVE_FILENAMES or name.startswith(".env."):
         return True
 
     for pattern in SENSITIVE_PATH_PATTERNS:
-        if pattern.search(path_str):
+        if pattern.search(path_str) or pattern.search(path_posix):
             return True
 
-    # Check for .ssh, .aws, or config/sam inside path components
+    # Check for .ssh, .aws, .azure, or .kube inside path components
     parts = [p.lower() for p in path.parts]
-    if ".ssh" in parts or ".aws" in parts:
+    if any(p in parts for p in (".ssh", ".aws", ".azure", ".kube")):
         return True
+
+    # Check Unix-style root directories if running on Windows
+    parts_stripped = [p.strip("\\/") for p in parts if p.strip("\\/")]
+    if parts_stripped and parts_stripped[0] in (
+        "etc",
+        "usr",
+        "bin",
+        "sbin",
+        "var",
+        "sys",
+        "proc",
+        "dev",
+        "boot",
+    ):
+        return True
+
+    # Check for Windows system directory paths
+    drive_and_first = parts[:2] if len(parts) >= 2 else []
+    if len(drive_and_first) == 2:
+        if drive_and_first[1] in ("windows", "program files", "program files (x86)"):
+            return True
 
     # Windows system32\config directory
     if "system32" in parts and "config" in parts and len(parts) > parts.index("config") + 1:
@@ -125,14 +181,7 @@ def validate_safe_path(
     allowed_root: Path | None = None,
     allow_nonexistent: bool = False,
 ) -> Path:
-    """Validate and canonicalize a filesystem path.
-
-    - Rejects empty strings and null bytes.
-    - Prevents directory traversal attacks ('..').
-    - If allowed_root is provided, enforces that the target is inside allowed_root.
-    - Blocks access to sensitive OS and credential locations.
-    - Ensures file/dir exists unless allow_nonexistent is True.
-    """
+    """Validate and canonicalize a filesystem path with traversal and system guards."""
     if not target_path_str or not isinstance(target_path_str, str):
         raise ValidationError("Target path is required and must be a non-empty string.")
 
@@ -157,9 +206,21 @@ def validate_safe_path(
                 f"root '{root_resolved}'"
             ) from err
     else:
-        resolved = target.resolve()
+        # Check relative directory traversal escaping working directory
+        if ".." in target_path_str or "%2e%2e" in target_path_str.lower():
+            resolved = target.resolve()
+            cwd = Path.cwd().resolve()
+            if not target.is_absolute():
+                try:
+                    resolved.relative_to(cwd)
+                except ValueError as err:
+                    raise PermissionError(
+                        f"Path traversal blocked: '{target_path_str}' escapes working directory."
+                    ) from err
+        else:
+            resolved = target.resolve()
 
-    # Sensitive path blocking
+    # Sensitive and system path blocking
     if is_sensitive_path(resolved):
         raise PermissionError(
             f"Access denied: Path '{target_path_str}' targets a protected or sensitive location."

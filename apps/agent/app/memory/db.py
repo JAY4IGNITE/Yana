@@ -129,6 +129,23 @@ MIGRATIONS: dict[int, str] = {
     );
     CREATE INDEX IF NOT EXISTS idx_pref_category ON user_preferences (category);
     """,
+    3: """
+    -- Phase 10: Security Audit Logging (Tamper-evident, zero secrets stored)
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        task_id TEXT,
+        user_request TEXT,
+        tool TEXT NOT NULL,
+        arguments TEXT NOT NULL,
+        permission_result TEXT NOT NULL,
+        execution_result TEXT,
+        verification TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_task_id ON audit_logs (task_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs (timestamp);
+    CREATE INDEX IF NOT EXISTS idx_audit_tool ON audit_logs (tool);
+    """,
 }
 
 

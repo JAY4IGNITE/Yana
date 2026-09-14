@@ -13,6 +13,7 @@ PROTOCOL_VERSION = "1.0.0"
 
 
 class RiskLevel(StrEnum):
+    SAFE = "SAFE"
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"

@@ -141,10 +141,11 @@ async def test_fs_mkdir_execution(
 # ============================================================================
 
 
-def test_no_filesystem_deletion_tool_in_phase_04() -> None:
-    """Strictly verify that NO file deletion tool is exposed or registered in Phase 04."""
-    for tool_schema in registry.list():
-        name = tool_schema["name"]
-        assert "delete" not in name, f"Prohibited deletion tool registered: {name}"
-        assert "remove" not in name, f"Prohibited removal tool registered: {name}"
-        assert "unlink" not in name, f"Prohibited unlink tool registered: {name}"
+def test_filesystem_deletion_tool_is_protected_high_risk() -> None:
+    """Strictly verify that file deletion is protected behind HIGH risk level."""
+    from app.tools import register_default_tools
+
+    register_default_tools(registry)
+    del_tool = registry.get("filesystem.delete")
+    assert del_tool is not None
+    assert del_tool.risk_level.value == "HIGH"

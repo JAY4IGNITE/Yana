@@ -36,34 +36,68 @@ class PermissionManager:
         """Check whether explicit user consent has been granted for a tool call."""
         return self._user_consents.get(tool_call_id, False)
 
-    def evaluate(
-        self, tool: BaseTool, tool_call_id: str, arguments: dict[str, Any]
+    def authorize(
+        self,
+        tool: BaseTool,
+        tool_call_id: str,
+        arguments: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> PermissionDecision:
-        """Evaluate if the tool call can proceed immediately or requires user consent."""
-        # LOW risk tools are safe to execute without explicit user prompt
-        if tool.risk_level == RiskLevel.LOW:
+        """Authorize a tool call execution against risk levels, user consent, and security policy.
+
+        Invariants:
+        - SAFE and LOW tools are auto-authorized in strict mode.
+        - MEDIUM tools are auto-authorized only in permissive mode;
+          strict mode requires user consent.
+        - HIGH and CRITICAL tools ALWAYS require explicit user consent, even in permissive mode.
+        - Unauthenticated or forged consents are rejected.
+        - Untrusted context escalates evaluation and rejects unconfirmed execution.
+        """
+        ctx = context or {}
+
+        # Untrusted external source escalation: if instructions or arguments originate from
+        # an untrusted document/website/email, require user confirmation regardless of mode
+        if ctx.get("is_untrusted_source") or ctx.get("from_untrusted_content"):
+            if tool_call_id in self._user_consents and self._user_consents[tool_call_id]:
+                return PermissionDecision(
+                    requires_prompt=False,
+                    granted=True,
+                    reason="Explicit user consent granted for untrusted-origin action.",
+                )
+            return PermissionDecision(
+                requires_prompt=True,
+                granted=False,
+                reason=(
+                    f"Action '{tool.name}' originates from untrusted external content. "
+                    "Explicit user confirmation is strictly required."
+                ),
+            )
+
+        # SAFE risk tools are always permitted without confirmation
+        if tool.risk_level in (RiskLevel.SAFE, RiskLevel.LOW):
             return PermissionDecision(
                 requires_prompt=False,
                 granted=True,
-                reason="Low risk operation allowed automatically.",
+                reason=f"{tool.risk_level.value} risk operation allowed automatically.",
             )
 
-        # In permissive mode (dev only), allow MEDIUM risk without prompt
-        if self.mode == "permissive" and tool.risk_level == RiskLevel.MEDIUM:
-            return PermissionDecision(
-                requires_prompt=False,
-                granted=True,
-                reason="Permissive mode enabled for medium risk.",
-            )
+        # MEDIUM risk tools: allowed in permissive mode, else check consent
+        if tool.risk_level == RiskLevel.MEDIUM:
+            if self.mode == "permissive":
+                return PermissionDecision(
+                    requires_prompt=False,
+                    granted=True,
+                    reason="Permissive mode enabled for medium risk.",
+                )
 
-        # Check if consent was already explicitly provided for this tool call ID
+        # HIGH and CRITICAL risk tools ALWAYS require explicit user consent
         if tool_call_id in self._user_consents:
             granted = self._user_consents[tool_call_id]
             if granted:
                 return PermissionDecision(
                     requires_prompt=False,
                     granted=True,
-                    reason="User consent was granted.",
+                    reason=f"User consent granted for {tool.risk_level.value} risk operation.",
                 )
             else:
                 return PermissionDecision(
@@ -72,21 +106,31 @@ class PermissionManager:
                     reason="User explicitly denied permission.",
                 )
 
-        # Requires desktop UI prompt
+        # If consent has not been recorded, require prompt
         return PermissionDecision(
             requires_prompt=True,
             granted=False,
             reason=(
-                f"Operation with risk level '{tool.risk_level.value}' "
+                f"Operation '{tool.name}' with risk level '{tool.risk_level.value}' "
                 "requires explicit user confirmation."
             ),
         )
 
-    def enforce_permission(
+    def evaluate(
         self, tool: BaseTool, tool_call_id: str, arguments: dict[str, Any]
+    ) -> PermissionDecision:
+        """Alias to authorize for backwards compatibility."""
+        return self.authorize(tool, tool_call_id, arguments)
+
+    def enforce_permission(
+        self,
+        tool: BaseTool,
+        tool_call_id: str,
+        arguments: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> None:
-        """Raise PermissionError if permission is not granted."""
-        decision = self.evaluate(tool, tool_call_id, arguments)
+        """Raise PermissionError if permission is not authorized."""
+        decision = self.authorize(tool, tool_call_id, arguments, context=context)
         if not decision.granted:
             raise PermissionError(
                 f"Permission denied for '{tool.name}' "

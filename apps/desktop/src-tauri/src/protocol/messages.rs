@@ -5,6 +5,7 @@ pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum RiskLevel {
+    Safe,
     Low,
     Medium,
     High,

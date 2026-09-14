@@ -58,11 +58,13 @@ from app.tools.mock_tools import (
 from app.tools.project.project_inspector import ProjectInspectTool
 from app.tools.project.project_runner import ProjectRunTool
 from app.tools.registry import ToolRegistry, registry
+from app.tools.security.config_tool import SecurityConfigureTool
 from app.tools.system.app_launcher import (
     SystemAppLauncherTool,
     SystemCloseApplicationTool,
     SystemGetInfoTool,
     SystemOpenApplicationTool,
+    SystemShutdownTool,
 )
 from app.tools.terminal.safe_terminal import (
     SafeTerminalRunTool,
@@ -78,6 +80,7 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     sys_open = SystemOpenApplicationTool()
     sys_close = SystemCloseApplicationTool()
     sys_info = SystemGetInfoTool()
+    sys_shutdown = SystemShutdownTool()
 
     # Filesystem Tools
     fs_read = FilesystemReadTool()
@@ -87,6 +90,10 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     fs_copy = FilesystemCopyTool()
     fs_move = FilesystemMoveTool()
     fs_rename = FilesystemRenameTool()
+    fs_delete = FilesystemDeleteTool()
+
+    # Security Tools
+    sec_cfg = SecurityConfigureTool()
 
     # Project & Developer Tools
     proj_inspect = ProjectInspectTool()
@@ -133,7 +140,8 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         sys_open,
         sys_close,
         sys_info,
-        # Filesystem (deletion remains protected behind permission system)
+        sys_shutdown,
+        # Filesystem
         fs_read,
         fs_search,
         fs_mkdir,
@@ -141,6 +149,9 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
         fs_copy,
         fs_move,
         fs_rename,
+        fs_delete,
+        # Security
+        sec_cfg,
         # Project & Developer
         proj_inspect,
         proj_run,
@@ -201,6 +212,9 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     # Browser aliases
     reg.register_alias("browser.open_url", "browser.navigate")
     reg.register_alias("browser.get_info", "browser.get_page_info")
+    # Filesystem & Security aliases
+    reg.register_alias("filesystem.delete_file", "filesystem.delete")
+    reg.register_alias("security.update_config", "security.configure")
 
     return reg
 

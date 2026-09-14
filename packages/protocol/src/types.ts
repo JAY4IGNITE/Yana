@@ -24,7 +24,7 @@ export type MessageType =
   | "stream_token"
   | "cancel_generation";
 
-export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type RiskLevel = "SAFE" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export interface BaseMessage {
   version: string;

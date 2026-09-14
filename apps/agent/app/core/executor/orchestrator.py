@@ -135,6 +135,9 @@ class AgentOrchestrator:
         total_steps = len(plan.steps)
         logger.info(f"Task {tid} planned with {total_steps} steps.")
 
+        # History of executed calls for loop detection
+        call_history: list[tuple[str, str]] = []
+
         # Step 2: Sequential Step Execution with Verification & Protection
         for idx, step in enumerate(plan.steps):
             step_num = step.step_number
@@ -142,6 +145,24 @@ class AgentOrchestrator:
 
             if self.task_manager.is_cancelled(tid):
                 return await self._handle_cancelled(tid, on_event)
+
+            # Loop detection: detect repeated identical tool calls
+            call_sig = (step.tool_name, str(sorted(step.arguments.items())))
+            if len(call_history) >= 2 and all(sig == call_sig for sig in call_history[-2:]):
+                err = SafeErrorPayload(
+                    code=ErrorCode.LOOP_DETECTED,
+                    message=(
+                        f"Infinite task loop detected: tool '{step.tool_name}' called "
+                        "repeatedly with identical arguments."
+                    ),
+                    task_id=tid,
+                    retryable=False,
+                )
+                self.task_manager.fail_task(tid, err)
+                await emit_status(TaskStatusEnum.FAILED, err.message, progress=step_progress)
+                return self.task_manager.get_task(tid)
+
+            call_history.append(call_sig)
 
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed > self.max_duration_seconds:
