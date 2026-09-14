@@ -1,6 +1,7 @@
 """Unit tests for Computer Tools (computer.get_active_window, computer.screenshot)."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -49,7 +50,7 @@ async def test_get_active_window_execution(window_tool: ComputerGetActiveWindowT
 
 def test_screenshot_loop_prevention(screenshot_tool: ComputerScreenshotTool) -> None:
     """Ensure continuous screenshot loop attempts are strictly blocked."""
-    prohibited_payloads = [
+    prohibited_payloads: list[dict[str, Any]] = [
         {"loop": True},
         {"interval": 5},
         {"repeat": 10},

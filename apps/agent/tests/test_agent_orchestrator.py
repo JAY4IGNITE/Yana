@@ -1,6 +1,7 @@
 """Unit tests for Agent Orchestrator execution, verification, retries, and protections."""
 
 import asyncio
+import uuid
 from typing import Any
 
 import pytest
@@ -37,7 +38,8 @@ class CustomPlanPlanner(BasePlanner):
         available_tools: list[dict[str, Any]],
         task_id: str | None = None,
     ) -> Plan:
-        plan = Plan(task_id=task_id, goal=goal, steps=self._steps)
+        plan_task_id = task_id or str(uuid.uuid4())
+        plan = Plan(task_id=plan_task_id, goal=goal, steps=self._steps)
         self.validate_plan(plan, available_tools)
         return plan
 
