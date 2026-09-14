@@ -57,3 +57,16 @@ fn test_permission_request_deserialization() {
     assert_eq!(req.risk_level, RiskLevel::High);
 }
 
+#[test]
+fn test_window_status_serialization() {
+    use yana_desktop_lib::commands::system::WindowStatus;
+    let status = WindowStatus {
+        mode: "collapsed".to_string(),
+        always_on_top: true,
+        is_visible: true,
+    };
+    let json_val = serde_json::to_value(&status).unwrap();
+    assert_eq!(json_val["mode"], "collapsed");
+    assert_eq!(json_val["always_on_top"], true);
+    assert_eq!(json_val["is_visible"], true);
+}

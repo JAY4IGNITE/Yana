@@ -4,10 +4,12 @@ export type PetState =
   | "idle"
   | "listening"
   | "thinking"
+  | "speaking"
   | "executing"
   | "verifying"
   | "success"
   | "error"
+  | "offline"
   | "sleeping";
 
 export interface PetStatus {
@@ -15,4 +17,11 @@ export interface PetStatus {
   mood: PetMood;
   lastInteraction: string;
   activeAnimation?: string;
+}
+
+export interface PetAnimationConfig {
+  speed: number;
+  glowColor: string;
+  primaryColor: string;
+  label: string;
 }

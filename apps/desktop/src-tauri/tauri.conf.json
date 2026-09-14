@@ -13,13 +13,15 @@
     "windows": [
       {
         "title": "YANA",
-        "width": 420,
-        "height": 680,
+        "width": 180,
+        "height": 220,
+        "minWidth": 140,
+        "minHeight": 180,
         "resizable": true,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "shadow": true
+        "shadow": false
       }
     ],
     "security": {

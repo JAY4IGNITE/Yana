@@ -6,17 +6,17 @@ describe("PetCompanion Component", () => {
   it("renders idle state by default", () => {
     render(<PetCompanion state="idle" />);
     expect(screen.getByTestId("pet-companion")).toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText("Online")).toBeInTheDocument();
   });
 
   it("updates text and badge when state changes to executing", () => {
     render(<PetCompanion state="executing" />);
-    expect(screen.getByText("Executing Tool...")).toBeInTheDocument();
+    expect(screen.getByText("Executing")).toBeInTheDocument();
   });
 
   it("updates text when state is sleeping", () => {
     render(<PetCompanion state="sleeping" />);
-    expect(screen.getByText("Resting")).toBeInTheDocument();
+    expect(screen.getByText("Offline")).toBeInTheDocument();
   });
 
   it("fires onPetClick callback when clicked", () => {
