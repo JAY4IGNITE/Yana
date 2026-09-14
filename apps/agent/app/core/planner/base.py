@@ -104,8 +104,54 @@ class RuleBasedPlanner(BasePlanner):
                 ),
             ]
 
-        # 2. Notepad / Application launch
-        elif "notepad" in g_lower or "launch app" in g_lower:
+        # 2. Screenshot
+        elif "screenshot" in g_lower or "capture screen" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.screenshot",
+                    description="Capture an on-demand desktop screenshot",
+                    arguments={},
+                )
+            ]
+
+        # 3. Active Window
+        elif "active window" in g_lower or "foreground window" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="computer.get_active_window",
+                    description="Inspect the active foreground window",
+                    arguments={},
+                )
+            ]
+
+        # 4. System Telemetry / System Info
+        elif "system info" in g_lower or "system telemetry" in g_lower or "specs" in g_lower:
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="system.get_system_info",
+                    description="Retrieve native system hardware and OS info",
+                    arguments={},
+                )
+            ]
+
+        # 5. Close Application
+        elif "close app" in g_lower or "terminate app" in g_lower:
+            match = re.search(r"(?:app|process)\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            target = match.group(1).strip() if match else "notepad.exe"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="system.close_application",
+                    description=f"Terminate application: {target}",
+                    arguments={"app_name": target},
+                )
+            ]
+
+        # 6. Notepad / Application launch
+        elif "notepad" in g_lower or "launch app" in g_lower or "open app" in g_lower:
             app = "notepad.exe" if "notepad" in g_lower else "calc.exe"
             steps = [
                 PlanStep(
@@ -116,32 +162,67 @@ class RuleBasedPlanner(BasePlanner):
                 )
             ]
 
-        # 3. Read file
-        elif "read file" in g_lower or "inspect file" in g_lower:
-            match = re.search(r"file\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
-            path = match.group(1).strip() if match else "README.md"
+        # 7. Create Directory
+        elif "create directory" in g_lower or "create folder" in g_lower or "mkdir " in g_lower:
+            match = re.search(r"(?:directory|folder)\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            target_dir = match.group(1).strip() if match else "test_folder"
             steps = [
                 PlanStep(
                     step_number=1,
-                    tool_name="filesystem.read_file",
+                    tool_name="filesystem.create_directory",
+                    description=f"Create directory: {target_dir}",
+                    arguments={"path": target_dir},
+                )
+            ]
+
+        # 8. Filesystem Search
+        elif "search file" in g_lower or "find file" in g_lower:
+            match = re.search(r"for\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            pattern = match.group(1).strip() if match else "*.txt"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name="filesystem.search",
+                    description=f"Search filesystem for pattern: {pattern}",
+                    arguments={"path": ".", "pattern": pattern},
+                )
+            ]
+
+        # 9. Read file
+        elif "read file" in g_lower or "inspect file" in g_lower:
+            match = re.search(r"file\s+['\"]?([^'\"]+)['\"]?", goal, re.IGNORECASE)
+            path = match.group(1).strip() if match else "README.md"
+            # Support both filesystem.read and filesystem.read_file
+            tool_name = "filesystem.read"
+            valid_names = {t["name"] for t in available_tools}
+            if tool_name not in valid_names and "filesystem.read_file" in valid_names:
+                tool_name = "filesystem.read_file"
+            steps = [
+                PlanStep(
+                    step_number=1,
+                    tool_name=tool_name,
                     description=f"Read contents of file: {path}",
                     arguments={"path": path},
                 )
             ]
 
-        # 4. Terminal command
+        # 10. Terminal command
         elif "terminal" in g_lower or "command" in g_lower or "run " in g_lower:
             cmd = goal.replace("run ", "").replace("command ", "").strip() or "whoami"
+            tool_name = "terminal.execute"
+            valid_names = {t["name"] for t in available_tools}
+            if tool_name not in valid_names and "terminal.run_command" in valid_names:
+                tool_name = "terminal.run_command"
             steps = [
                 PlanStep(
                     step_number=1,
-                    tool_name="terminal.run_command",
+                    tool_name=tool_name,
                     description=f"Execute shell command: {cmd}",
                     arguments={"command": cmd},
                 )
             ]
 
-        # 5. Default single-action fallback
+        # 11. Default single-action fallback
         else:
             steps = [
                 PlanStep(

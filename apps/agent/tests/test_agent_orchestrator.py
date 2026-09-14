@@ -192,3 +192,27 @@ async def test_orchestrator_cancellation(orchestrator_env: AgentOrchestrator) ->
     cancel_events = [e for e in events if isinstance(e, TaskCancelled)]
     assert len(cancel_events) == 1
     assert cancel_events[0].task_id == active_tid
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_real_tools_pipeline() -> None:
+    """Validate full pipeline with real tools: system.get_system_info."""
+    from app.tools import register_default_tools
+
+    reg = register_default_tools(ToolRegistry())
+    orchestrator = AgentOrchestrator(
+        planner=None,
+        tool_registry=reg,
+        task_manager=TaskManager(),
+    )
+
+    task = await orchestrator.run_goal("retrieve system info")
+
+    assert task.status == TaskStatusEnum.COMPLETED
+    assert len(task.steps) == 1
+    step = task.steps[0]
+    assert step.tool_name == "system.get_system_info"
+    assert step.verified is True
+    assert step.output is not None
+    assert "cpu_cores" in step.output
+
