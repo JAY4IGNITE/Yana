@@ -7,6 +7,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.conversation_routes import (
+    conversations_router,
+)
+from app.api.conversation_routes import (
+    router as conversation_router,
+)
 from app.api.routes import router
 from app.config import settings
 from app.errors import ErrorCode, YanaBaseError
@@ -73,6 +79,8 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 
 # Mount API routes
 app.include_router(router)
+app.include_router(conversation_router)
+app.include_router(conversations_router)
 
 
 if __name__ == "__main__":

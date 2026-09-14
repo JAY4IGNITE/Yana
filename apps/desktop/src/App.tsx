@@ -13,8 +13,11 @@ export const App: React.FC = () => {
     scale,
     alwaysOnTop,
     messages,
+    conversations,
+    currentConversationId,
     isListening,
     isSpeaking,
+    isGenerating,
     pendingPermission,
     agentConnected,
     agentUrl,
@@ -27,6 +30,10 @@ export const App: React.FC = () => {
     handleSendMessage,
     handleToggleListening,
     handleStop,
+    handleRetry,
+    handleClearConversation,
+    handleNewConversation,
+    loadConversation,
     handleGrantPermission,
     handleDenyPermission,
   } = useProtocol();
@@ -60,8 +67,11 @@ export const App: React.FC = () => {
           petState={petState}
           petMood={petMood}
           messages={messages}
+          conversations={conversations}
+          currentConversationId={currentConversationId}
           isListening={isListening}
           isSpeaking={isSpeaking}
+          isGenerating={isGenerating}
           alwaysOnTop={alwaysOnTop}
           agentConnected={agentConnected}
           onCollapse={collapseWindow}
@@ -69,6 +79,10 @@ export const App: React.FC = () => {
           onSendMessage={handleSendMessage}
           onToggleListening={handleToggleListening}
           onStop={handleStop}
+          onRetry={handleRetry}
+          onClearConversation={handleClearConversation}
+          onNewConversation={handleNewConversation}
+          onSelectConversation={loadConversation}
           onOpenSettings={() => setSettingsOpen(true)}
         />
       )}

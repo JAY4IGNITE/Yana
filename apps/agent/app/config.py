@@ -32,9 +32,14 @@ class AgentSettings(BaseSettings):
     # AI Configuration (Secrets stored as SecretStr)
     ai_provider: str = "mock"
     ai_api_key: SecretStr = Field(default=SecretStr(""))
+    ai_base_url: str | None = None
     ai_model: str = "gpt-4o-mini"
     ai_max_tokens: int = 2048
     ai_temperature: float = 0.7
+    ai_system_prompt: str = (
+        "You are YANA, a personal, native Windows AI desktop companion. "
+        "Keep your responses concise, helpful, and natural."
+    )
 
     # Security & Policy
     permission_mode: Literal["strict", "permissive"] = "strict"

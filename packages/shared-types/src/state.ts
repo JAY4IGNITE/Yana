@@ -23,17 +23,55 @@ export interface WindowState {
   scale: PetScale;
 }
 
+export type MessageRole = "user" | "assistant" | "system" | "error";
+
+export interface MessageMetadata {
+  provider?: string;
+  model?: string;
+  tokensUsed?: number;
+  finishReason?: string;
+  isStreaming?: boolean;
+  error?: {
+    code: string;
+    message: string;
+    retryable?: boolean;
+  };
+  extra?: Record<string, unknown>;
+}
+
 export interface ConversationMessage {
   id: string;
-  role: "user" | "assistant" | "system" | "error";
+  conversationId?: string;
+  role: MessageRole;
   content: string;
   timestamp: string;
+  metadata?: MessageMetadata;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ConversationMessage[];
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
 }
 
 export interface ConversationState {
   messages: ConversationMessage[];
   isListening: boolean;
   isSpeaking: boolean;
+  isGenerating?: boolean;
+  activeSessionId?: string | null;
+  currentConversationId?: string | null;
+  conversations?: ConversationSummary[];
   activeInput: string;
 }
 

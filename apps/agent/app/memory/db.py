@@ -1,5 +1,7 @@
 """Database Abstraction and SQLite Storage Engine for YANA."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiosqlite
@@ -48,6 +50,25 @@ SCHEMA_MIGRATIONS = [
         task_id TEXT
     );
     """,
+    """
+    CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        metadata TEXT,
+        FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+    );
+    """,
 ]
 
 
@@ -66,11 +87,12 @@ class DatabaseManager:
             await db.commit()
         logger.info(f"Database initialized at {self.db_path}")
 
-    async def get_connection(self) -> aiosqlite.Connection:
-        """Obtain an active database connection."""
-        db = await aiosqlite.connect(self.db_path)
-        db.row_factory = aiosqlite.Row
-        return db
+    @asynccontextmanager
+    async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
+        """Obtain an active database connection within an async context."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            yield db
 
 
 # Global database manager

@@ -20,7 +20,9 @@ export type MessageType =
   | "permission_result"
   | "error"
   | "task_completed"
-  | "task_cancelled";
+  | "task_cancelled"
+  | "stream_token"
+  | "cancel_generation";
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
@@ -116,6 +118,20 @@ export interface TaskCancelled extends BaseMessage {
   reason: string;
 }
 
+export interface StreamToken extends BaseMessage {
+  type: "stream_token";
+  sessionId: string;
+  token: string;
+  isComplete: boolean;
+  messageId?: string;
+}
+
+export interface CancelGeneration extends BaseMessage {
+  type: "cancel_generation";
+  sessionId: string;
+  reason?: string;
+}
+
 export type ProtocolMessage =
   | UserMessage
   | AssistantMessage
@@ -128,4 +144,6 @@ export type ProtocolMessage =
   | PermissionResult
   | ErrorMessage
   | TaskCompleted
-  | TaskCancelled;
+  | TaskCancelled
+  | StreamToken
+  | CancelGeneration;

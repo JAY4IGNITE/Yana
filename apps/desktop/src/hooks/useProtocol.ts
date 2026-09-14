@@ -1,13 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   PetState,
   PetMood,
   PetScale,
   WindowMode,
   ConversationMessage,
+  ConversationSummary,
   YanaState,
 } from "@yana/shared-types";
-import { PermissionRequest, TaskStatus } from "@yana/protocol";
+import { PermissionRequest, TaskStatus, SafeErrorPayload } from "@yana/protocol";
 import { agentClient, DEFAULT_AGENT_URL } from "../services/agentClient";
 
 // Safe Tauri invocation helper (graceful in tests & browser dev server)
@@ -16,7 +17,6 @@ async function safeInvoke(cmd: string, args?: Record<string, unknown>) {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke(cmd, args);
   } catch {
-    // Graceful fallback when running in browser or test environments
     return null;
   }
 }
@@ -46,14 +46,22 @@ export function useProtocol() {
 
   // 4. Conversation State
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string>("default");
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   // Modals & Tasks
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [currentTaskStatus, setCurrentTaskStatus] = useState<TaskStatus | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [conversationListOpen, setConversationListOpen] = useState(false);
+
+  // Ref to cancel active stream
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Check backend health
   const checkConnection = useCallback(async () => {
@@ -71,6 +79,32 @@ export function useProtocol() {
     const interval = setInterval(checkConnection, 12000);
     return () => clearInterval(interval);
   }, [checkConnection]);
+
+  // Load conversation list and messages on initial connect
+  const refreshConversations = useCallback(async () => {
+    try {
+      const list = await agentClient.listConversations();
+      setConversations(list);
+    } catch {
+      // Offline fallback
+    }
+  }, []);
+
+  const loadConversation = useCallback(async (id: string) => {
+    try {
+      const convo = await agentClient.getConversation(id);
+      setCurrentConversationId(convo.id);
+      setMessages(convo.messages);
+    } catch {
+      // Fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    if (agentConnected) {
+      refreshConversations();
+    }
+  }, [agentConnected, refreshConversations]);
 
   // Sync window mode with Tauri native window resizing
   const expandWindow = useCallback(async () => {
@@ -121,21 +155,55 @@ export function useProtocol() {
     };
   }, [expandWindow]);
 
-  // Send message flow
-  const handleSendMessage = async (text: string) => {
-    const userMsg: ConversationMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: text,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setPetState("thinking");
-    setAppStatus("busy");
+  // Stop / Cancel active generation
+  const handleStop = useCallback(async () => {
+    // 1. Abort local fetch
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
 
-    // Check if user requested system tool (e.g. notepad)
+    // 2. Propagate cancel signal to backend provider
+    if (activeSessionId && agentConnected) {
+      await agentClient.cancelGeneration(activeSessionId).catch(() => {});
+    }
+
+    setIsListening(false);
+    setIsSpeaking(false);
+    setIsGenerating(false);
+    setActiveSessionId(null);
+    setPetState("idle");
+    setAppStatus("ready");
+
+    if (currentTaskStatus?.status === "running") {
+      setCurrentTaskStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "cancelled",
+              message: "Task stopped by user.",
+            }
+          : null
+      );
+    }
+  }, [activeSessionId, agentConnected, currentTaskStatus?.status]);
+
+  // Send message flow (Streaming enabled)
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    // 1. Check for system tool command intercept (e.g. notepad)
     if (text.toLowerCase().includes("notepad")) {
       const toolCallId = crypto.randomUUID();
+      const userMsg: ConversationMessage = {
+        id: crypto.randomUUID(),
+        conversationId: currentConversationId,
+        role: "user",
+        content: text,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+
       const req: PermissionRequest = {
         version: "1.0.0",
         id: crypto.randomUUID(),
@@ -153,24 +221,262 @@ export function useProtocol() {
       return;
     }
 
-    // Assistant response simulation / backend response
-    setTimeout(() => {
-      const assistantMsg: ConversationMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `I received your command: "${text}". The desktop companion architecture is operational.`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      setPetState("speaking");
-      setIsSpeaking(true);
+    // 2. Normal conversational message
+    const userMsgId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
 
+    const userMsg: ConversationMessage = {
+      id: userMsgId,
+      conversationId: currentConversationId,
+      role: "user",
+      content: text,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Pre-create placeholder assistant message
+    const assistantMsg: ConversationMessage = {
+      id: assistantMsgId,
+      conversationId: currentConversationId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      metadata: { isStreaming: true },
+    };
+
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setPetState("thinking");
+    setAppStatus("busy");
+    setIsGenerating(true);
+    setActiveSessionId(sessionId);
+
+    // Setup cancellation controller
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    if (!agentConnected) {
+      // Offline simulation fallback
       setTimeout(() => {
-        setIsSpeaking(false);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: `[Offline] I received: "${text}". Start the YANA agent for real AI streaming.`,
+                  metadata: { isStreaming: false },
+                }
+              : m
+          )
+        );
+        setPetState("speaking");
+        setIsSpeaking(true);
+        setTimeout(() => {
+          setIsSpeaking(false);
+          setIsGenerating(false);
+          setPetState("idle");
+          setAppStatus("ready");
+          setActiveSessionId(null);
+        }, 1200);
+      }, 500);
+      return;
+    }
+
+    // Stream from Agent backend
+    await agentClient.streamConversation(
+      currentConversationId,
+      text,
+      sessionId,
+      {
+        onToken: (token: string) => {
+          setPetState("speaking");
+          setIsSpeaking(true);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: m.content + token }
+                : m
+            )
+          );
+        },
+        onDone: (messageId, metadata) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    id: messageId || m.id,
+                    metadata: { ...metadata, isStreaming: false },
+                  }
+                : m
+            )
+          );
+          setIsSpeaking(false);
+          setIsGenerating(false);
+          setActiveSessionId(null);
+          setPetState("idle");
+          setAppStatus("ready");
+          refreshConversations();
+        },
+        onError: (err: SafeErrorPayload) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    role: "error",
+                    content: `Error: ${err.message}`,
+                    metadata: { isStreaming: false, error: err },
+                  }
+                : m
+            )
+          );
+          setIsSpeaking(false);
+          setIsGenerating(false);
+          setActiveSessionId(null);
+          setPetState("error");
+          setAppStatus("error");
+          setTimeout(() => {
+            setPetState("idle");
+            setAppStatus("ready");
+          }, 3500);
+        },
+      },
+      controller.signal
+    );
+  };
+
+  // Retry last turn
+  const handleRetry = async () => {
+    if (isGenerating) return;
+
+    const sessionId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+
+    // Placeholder message for retry
+    const assistantMsg: ConversationMessage = {
+      id: assistantMsgId,
+      conversationId: currentConversationId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      metadata: { isStreaming: true },
+    };
+
+    setMessages((prev) => [...prev, assistantMsg]);
+    setPetState("thinking");
+    setAppStatus("busy");
+    setIsGenerating(true);
+    setActiveSessionId(sessionId);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    if (!agentConnected) {
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: "Retry simulated: Ready to serve.",
+                  metadata: { isStreaming: false },
+                }
+              : m
+          )
+        );
+        setIsGenerating(false);
         setPetState("idle");
         setAppStatus("ready");
-      }, 1500);
-    }, 600);
+        setActiveSessionId(null);
+      }, 500);
+      return;
+    }
+
+    await agentClient.retryConversation(
+      currentConversationId,
+      sessionId,
+      {
+        onToken: (token: string) => {
+          setPetState("speaking");
+          setIsSpeaking(true);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: m.content + token }
+                : m
+            )
+          );
+        },
+        onDone: (messageId, metadata) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    id: messageId || m.id,
+                    metadata: { ...metadata, isStreaming: false },
+                  }
+                : m
+            )
+          );
+          setIsSpeaking(false);
+          setIsGenerating(false);
+          setActiveSessionId(null);
+          setPetState("idle");
+          setAppStatus("ready");
+        },
+        onError: (err: SafeErrorPayload) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? {
+                    ...m,
+                    role: "error",
+                    content: `Retry failed: ${err.message}`,
+                    metadata: { isStreaming: false, error: err },
+                  }
+                : m
+            )
+          );
+          setIsSpeaking(false);
+          setIsGenerating(false);
+          setActiveSessionId(null);
+          setPetState("error");
+          setAppStatus("error");
+          setTimeout(() => {
+            setPetState("idle");
+            setAppStatus("ready");
+          }, 3500);
+        },
+      },
+      controller.signal
+    );
+  };
+
+  // Clear conversation
+  const handleClearConversation = async () => {
+    setMessages([]);
+    if (agentConnected && currentConversationId) {
+      await agentClient.clearConversation(currentConversationId).catch(() => {});
+      refreshConversations();
+    }
+  };
+
+  // New conversation session
+  const handleNewConversation = async () => {
+    if (agentConnected) {
+      try {
+        const convo = await agentClient.createConversation("New Chat");
+        setCurrentConversationId(convo.id);
+        setMessages([]);
+        refreshConversations();
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    setCurrentConversationId(crypto.randomUUID());
+    setMessages([]);
   };
 
   const handleToggleListening = () => {
@@ -180,24 +486,6 @@ export function useProtocol() {
     } else {
       setIsListening(true);
       setPetState("listening");
-    }
-  };
-
-  const handleStop = () => {
-    setIsListening(false);
-    setIsSpeaking(false);
-    setPetState("idle");
-    setAppStatus("ready");
-    if (currentTaskStatus?.status === "running") {
-      setCurrentTaskStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: "cancelled",
-              message: "Task stopped by user.",
-            }
-          : null
-      );
     }
   };
 
@@ -247,6 +535,7 @@ export function useProtocol() {
           ...prev,
           {
             id: crypto.randomUUID(),
+            conversationId: currentConversationId,
             role: "assistant",
             content: `Tool '${pendingPermission.tool}' executed successfully. Output: ${JSON.stringify(
               execRes.tool_result.output
@@ -271,6 +560,7 @@ export function useProtocol() {
             ...prev,
             {
               id: crypto.randomUUID(),
+              conversationId: currentConversationId,
               role: "assistant",
               content: `Simulated execution of ${pendingPermission.tool} complete.`,
               timestamp: new Date().toISOString(),
@@ -285,6 +575,7 @@ export function useProtocol() {
         ...prev,
         {
           id: crypto.randomUUID(),
+          conversationId: currentConversationId,
           role: "error",
           content: errMsg,
           timestamp: new Date().toISOString(),
@@ -308,6 +599,7 @@ export function useProtocol() {
       ...prev,
       {
         id: crypto.randomUUID(),
+        conversationId: currentConversationId,
         role: "error",
         content: `Permission denied: ${reason}`,
         timestamp: new Date().toISOString(),
@@ -338,6 +630,10 @@ export function useProtocol() {
       messages,
       isListening,
       isSpeaking,
+      isGenerating,
+      activeSessionId,
+      currentConversationId,
+      conversations,
       activeInput: "",
     },
   };
@@ -352,8 +648,11 @@ export function useProtocol() {
     scale,
     alwaysOnTop,
     messages,
+    conversations,
+    currentConversationId,
     isListening,
     isSpeaking,
+    isGenerating,
     pendingPermission,
     currentTaskStatus,
     activeToolName,
@@ -361,6 +660,8 @@ export function useProtocol() {
     agentUrl: DEFAULT_AGENT_URL,
     settingsOpen,
     setSettingsOpen,
+    conversationListOpen,
+    setConversationListOpen,
     expandWindow,
     collapseWindow,
     toggleAlwaysOnTop,
@@ -368,6 +669,10 @@ export function useProtocol() {
     handleSendMessage,
     handleToggleListening,
     handleStop,
+    handleRetry,
+    handleClearConversation,
+    handleNewConversation,
+    loadConversation,
     handleGrantPermission,
     handleDenyPermission,
   };
