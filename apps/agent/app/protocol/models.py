@@ -28,6 +28,7 @@ class TaskStatusEnum(StrEnum):
     EXECUTING = "executing"
     RUNNING = "running"
     VERIFYING = "verifying"
+    PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -92,9 +93,12 @@ class TaskStep(BaseModel):
     status: TaskStatusEnum = TaskStatusEnum.PENDING
     retry_count: int = Field(default=0, alias="retryCount")
     output: Any = None
+    observe_output: Any = Field(default=None, alias="observeOutput")
     error: SafeErrorPayload | None = None
+    failure_category: str | None = Field(default=None, alias="failureCategory")
     verified: bool | None = None
     verification_notes: str | None = Field(default=None, alias="verificationNotes")
+    is_checkpoint: bool = Field(default=False, alias="isCheckpoint")
     started_at: str | None = Field(default=None, alias="startedAt")
     completed_at: str | None = Field(default=None, alias="completedAt")
 
@@ -104,9 +108,14 @@ class Task(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     goal: str
-    status: TaskStatusEnum = TaskStatusEnum.PENDING
+    context: dict[str, Any] = Field(default_factory=dict)
+    plan: dict[str, Any] | None = None
     steps: list[TaskStep] = Field(default_factory=list)
     current_step_index: int = Field(default=0, alias="currentStepIndex")
+    status: TaskStatusEnum = TaskStatusEnum.PENDING
+    results: dict[str, Any] = Field(default_factory=dict)
+    errors: list[SafeErrorPayload] = Field(default_factory=list)
+    timestamps: dict[str, str | None] = Field(default_factory=dict)
     created_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat(),
         alias="createdAt",
@@ -115,9 +124,18 @@ class Task(BaseModel):
         default_factory=lambda: datetime.now(UTC).isoformat(),
         alias="updatedAt",
     )
+    started_at: str | None = Field(default=None, alias="startedAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+    paused_at: str | None = Field(default=None, alias="pausedAt")
     summary: str | None = None
     error: SafeErrorPayload | None = None
     cancel_reason: str | None = Field(default=None, alias="cancelReason")
+
+    @property
+    def current_step(self) -> int | None:
+        if not self.steps or self.current_step_index >= len(self.steps):
+            return None
+        return self.steps[self.current_step_index].step_number
 
     @property
     def task_id(self) -> str:
@@ -130,6 +148,10 @@ class Task(BaseModel):
     @property
     def cancelled(self) -> bool:
         return self.status == TaskStatusEnum.CANCELLED
+
+    @property
+    def paused(self) -> bool:
+        return self.status == TaskStatusEnum.PAUSED
 
 
 class TaskStepPayload(BaseProtocolModel):
@@ -206,6 +228,19 @@ class TaskCancelled(BaseProtocolModel):
     reason: str
 
 
+class TaskPaused(BaseProtocolModel):
+    type: Literal["task_paused"] = "task_paused"
+    task_id: str = Field(..., alias="taskId")
+    reason: str = "User paused task"
+    step_number: int | None = Field(default=None, alias="stepNumber")
+
+
+class TaskResumed(BaseProtocolModel):
+    type: Literal["task_resumed"] = "task_resumed"
+    task_id: str = Field(..., alias="taskId")
+    step_number: int | None = Field(default=None, alias="stepNumber")
+
+
 ProtocolMessage = Annotated[
     UserMessage
     | AssistantMessage
@@ -219,6 +254,8 @@ ProtocolMessage = Annotated[
     | PermissionResult
     | ErrorMessage
     | TaskCompleted
-    | TaskCancelled,
+    | TaskCancelled
+    | TaskPaused
+    | TaskResumed,
     Field(discriminator="type"),
 ]

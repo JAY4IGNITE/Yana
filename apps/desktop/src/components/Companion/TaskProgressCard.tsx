@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Terminal,
   AlertTriangle,
+  Play,
+  Pause,
 } from "lucide-react";
 
 export interface ActiveTaskState {
@@ -26,12 +28,16 @@ export interface ActiveTaskState {
 
 export interface TaskProgressCardProps {
   task: ActiveTaskState;
+  onPause?: () => void;
+  onResume?: () => void;
   onCancel?: () => void;
   onDismiss?: () => void;
 }
 
 export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
   task,
+  onPause,
+  onResume,
   onCancel,
   onDismiss,
 }) => {
@@ -60,6 +66,13 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-950/80 text-purple-300 border border-purple-800/60 shadow-sm">
             <ShieldCheck className="w-3 h-3 text-purple-400 animate-pulse" />
             Verifying
+          </span>
+        );
+      case "paused":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-950/80 text-amber-400 border border-amber-800/60 shadow-sm">
+            <Pause className="w-3 h-3 text-amber-400" />
+            Paused
           </span>
         );
       case "waiting_confirmation":
@@ -109,6 +122,8 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
         return "bg-gradient-to-r from-orange-500 to-rose-500";
       case "cancelled":
         return "bg-slate-600";
+      case "paused":
+        return "bg-gradient-to-r from-amber-500 to-yellow-400";
       case "verifying":
         return "bg-gradient-to-r from-cyan-500 to-purple-500";
       default:
@@ -125,8 +140,11 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-              Agent Task
+            <span
+              data-testid="current-task-label"
+              className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-semibold"
+            >
+              Current task
             </span>
             {task.currentStep && task.totalSteps && (
               <span className="text-[10px] text-slate-400 font-mono">
@@ -144,6 +162,32 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
 
         <div className="flex items-center gap-2 flex-shrink-0">
           {getStatusBadge()}
+
+          {/* Pause / Resume Controls */}
+          {!isTerminal && task.status === "paused" && onResume && (
+            <button
+              data-testid="resume-task-button"
+              onClick={onResume}
+              className="p-1 rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/50 transition-colors"
+              title="Resume task"
+              aria-label="Resume task"
+            >
+              <Play className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {!isTerminal && task.status !== "paused" && onPause && (
+            <button
+              data-testid="pause-task-button"
+              onClick={onPause}
+              className="p-1 rounded-md text-amber-400 hover:text-amber-300 hover:bg-amber-950/50 transition-colors"
+              title="Pause task"
+              aria-label="Pause task"
+            >
+              <Pause className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {!isTerminal && onCancel && (
             <button
               data-testid="cancel-task-button"
@@ -155,6 +199,7 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
               <Ban className="w-3.5 h-3.5" />
             </button>
           )}
+
           {isTerminal && onDismiss && (
             <button
               onClick={onDismiss}
@@ -185,12 +230,15 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
 
       {/* Step Breakdown */}
       {task.steps.length > 0 && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800/60 max-h-36 overflow-y-auto pr-1">
+        <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800/60 max-h-48 overflow-y-auto pr-1">
           {task.steps.map((step, idx) => {
             const isStepCompleted = step.status === "completed";
             const isStepFailed = step.status === "failed";
-            const isStepExecuting =
-              step.status === "executing" || step.status === "running" || step.status === "verifying";
+            const isStepActive =
+              step.status === "executing" ||
+              step.status === "running" ||
+              step.status === "verifying" ||
+              step.status === "paused";
             const stepId = step.stepId || (step as any).step_id || `step-${idx}`;
             const stepNumber = step.stepNumber ?? (step as any).step_number ?? (idx + 1);
             const toolName = step.toolName || (step as any).tool_name || "";
@@ -198,21 +246,43 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
             return (
               <div
                 key={stepId}
+                data-testid={`step-row-${stepNumber}`}
                 className="flex items-center justify-between text-[11px] py-1 px-1.5 rounded bg-slate-950/40 border border-slate-800/40"
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
+                  {/* Phase 11 Step Status Markers: ✓, ●, ○, ✗ */}
                   {isStepCompleted ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    <span
+                      data-testid={`step-marker-${stepNumber}`}
+                      className="text-emerald-400 font-bold font-mono text-[13px] flex-shrink-0 w-3.5 text-center leading-none"
+                    >
+                      ✓
+                    </span>
+                  ) : isStepActive ? (
+                    <span
+                      data-testid={`step-marker-${stepNumber}`}
+                      className="text-amber-400 font-bold font-mono text-[13px] flex-shrink-0 w-3.5 text-center leading-none animate-pulse"
+                    >
+                      ●
+                    </span>
                   ) : isStepFailed ? (
-                    <XCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-                  ) : isStepExecuting ? (
-                    <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin flex-shrink-0" />
+                    <span
+                      data-testid={`step-marker-${stepNumber}`}
+                      className="text-rose-400 font-bold font-mono text-[13px] flex-shrink-0 w-3.5 text-center leading-none"
+                    >
+                      ✗
+                    </span>
                   ) : (
-                    <Clock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                    <span
+                      data-testid={`step-marker-${stepNumber}`}
+                      className="text-slate-500 font-bold font-mono text-[13px] flex-shrink-0 w-3.5 text-center leading-none"
+                    >
+                      ○
+                    </span>
                   )}
 
                   <span className="font-mono text-[10px] text-slate-400 flex-shrink-0">
-                    #{stepNumber}
+                    Step {stepNumber}
                   </span>
 
                   <span className="truncate text-slate-300">

@@ -13,7 +13,13 @@ from pydantic import BaseModel, Field
 from app.core.executor.orchestrator import agent_orchestrator
 from app.core.planner.base import Plan, RuleBasedPlanner
 from app.core.task_manager import task_manager
-from app.protocol.models import BaseProtocolModel, Task, TaskCancelled
+from app.protocol.models import (
+    BaseProtocolModel,
+    Task,
+    TaskCancelled,
+    TaskPaused,
+    TaskResumed,
+)
 from app.tools.registry import registry
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -133,6 +139,44 @@ async def cancel_agent_task(task_id: str, req: CancelTaskRequest | None = None) 
     """Cooperative cancellation of an active agent task."""
     try:
         reason = req.reason if req else "User requested cancellation"
-        return task_manager.cancel_task(task_id, reason)
+        return await agent_orchestrator.cancel_task(task_id, reason)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+class PauseTaskRequest(BaseModel):
+    reason: str = "User paused task"
+
+
+class RetryTaskRequest(BaseModel):
+    step_number: int | None = Field(default=None, alias="stepNumber")
+
+
+@router.post("/tasks/{task_id}/pause", response_model=TaskPaused)
+async def pause_agent_task(task_id: str, req: PauseTaskRequest | None = None) -> TaskPaused:
+    """Pause an active agent task."""
+    try:
+        reason = req.reason if req else "User paused task"
+        return await agent_orchestrator.pause_task(task_id, reason)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.post("/tasks/{task_id}/resume", response_model=TaskResumed)
+async def resume_agent_task(task_id: str) -> TaskResumed:
+    """Resume a paused agent task."""
+    try:
+        return await agent_orchestrator.resume_task(task_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.post("/tasks/{task_id}/retry", response_model=dict[str, Any])
+async def retry_agent_task(task_id: str, req: RetryTaskRequest | None = None) -> dict[str, Any]:
+    """Reset a failed step or task for retry."""
+    try:
+        step_num = req.step_number if req else None
+        task = task_manager.retry_task(task_id, step_num)
+        return task.model_dump(by_alias=True)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

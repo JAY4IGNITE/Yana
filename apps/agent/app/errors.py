@@ -145,3 +145,25 @@ class VoicePermissionDeniedError(YanaBaseError):
             retryable=False,
             **kwargs,
         )
+
+
+class SecurityError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SECURITY_ERROR,
+            details=details,
+            retryable=False,
+            **kwargs,
+        )
+
+
+class LoopDetectedError(YanaBaseError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.LOOP_DETECTED,
+            details=details,
+            retryable=False,
+            **kwargs,
+        )

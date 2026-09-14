@@ -21,6 +21,8 @@ export type MessageType =
   | "error"
   | "task_completed"
   | "task_cancelled"
+  | "task_paused"
+  | "task_resumed"
   | "stream_token"
   | "cancel_generation";
 
@@ -58,6 +60,7 @@ export type TaskStatusType =
   | "executing"
   | "running"
   | "verifying"
+  | "paused"
   | "completed"
   | "failed"
   | "cancelled";
@@ -160,6 +163,19 @@ export interface CancelGeneration extends BaseMessage {
   reason?: string;
 }
 
+export interface TaskPaused extends BaseMessage {
+  type: "task_paused";
+  taskId: string;
+  reason?: string;
+  stepNumber?: number;
+}
+
+export interface TaskResumed extends BaseMessage {
+  type: "task_resumed";
+  taskId: string;
+  stepNumber?: number;
+}
+
 export type ProtocolMessage =
   | UserMessage
   | AssistantMessage
@@ -173,5 +189,7 @@ export type ProtocolMessage =
   | ErrorMessage
   | TaskCompleted
   | TaskCancelled
+  | TaskPaused
+  | TaskResumed
   | StreamToken
   | CancelGeneration;

@@ -40,6 +40,18 @@ describe("TaskProgressCard Component", () => {
         description: "Wait for sensor stabilization",
         status: "executing",
       },
+      {
+        version: "1.0.0",
+        id: "step-3",
+        timestamp: new Date().toISOString(),
+        type: "task_step",
+        taskId: "task-100",
+        stepId: "s3",
+        stepNumber: 3,
+        toolName: "mock.verify",
+        description: "Verify sensory health",
+        status: "pending",
+      },
     ],
   };
 
@@ -47,6 +59,7 @@ describe("TaskProgressCard Component", () => {
     render(<TaskProgressCard task={sampleExecutingTask} onCancel={vi.fn()} />);
 
     expect(screen.getByTestId("task-progress-card")).toBeInTheDocument();
+    expect(screen.getByTestId("current-task-label")).toHaveTextContent("Current task");
     expect(screen.getByText("Run agent diagnostic mock sequence")).toBeInTheDocument();
     expect(screen.getByText("Executing")).toBeInTheDocument();
     expect(screen.getByText("(2/3)")).toBeInTheDocument();
@@ -56,12 +69,55 @@ describe("TaskProgressCard Component", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders steps with tool names and descriptions", () => {
+  it("renders steps with tool names, descriptions, and ✓ / ● / ○ markers", () => {
     render(<TaskProgressCard task={sampleExecutingTask} onCancel={vi.fn()} />);
 
     expect(screen.getByText("Initialize telemetry check")).toBeInTheDocument();
     expect(screen.getByText("mock.action")).toBeInTheDocument();
     expect(screen.getByText("mock.wait")).toBeInTheDocument();
+
+    // Check Phase 11 step markers
+    expect(screen.getByTestId("step-marker-1")).toHaveTextContent("✓");
+    expect(screen.getByTestId("step-marker-2")).toHaveTextContent("●");
+    expect(screen.getByTestId("step-marker-3")).toHaveTextContent("○");
+  });
+
+  it("calls onPause when pause button is clicked during execution", () => {
+    const handlePause = vi.fn();
+    render(
+      <TaskProgressCard
+        task={sampleExecutingTask}
+        onPause={handlePause}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const pauseBtn = screen.getByTestId("pause-task-button");
+    expect(pauseBtn).toBeInTheDocument();
+    fireEvent.click(pauseBtn);
+    expect(handlePause).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onResume when resume button is clicked on a paused task", () => {
+    const handleResume = vi.fn();
+    const pausedTask: ActiveTaskState = {
+      ...sampleExecutingTask,
+      status: "paused",
+    };
+
+    render(
+      <TaskProgressCard
+        task={pausedTask}
+        onResume={handleResume}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    const resumeBtn = screen.getByTestId("resume-task-button");
+    expect(resumeBtn).toBeInTheDocument();
+    fireEvent.click(resumeBtn);
+    expect(handleResume).toHaveBeenCalledTimes(1);
   });
 
   it("calls onCancel when cancel button is clicked", () => {

@@ -33,6 +33,11 @@ class ToolRegistry:
         """Retrieve a tool by name (alias for get)."""
         return self.get(name)
 
+    def has_tool(self, name: str) -> bool:
+        """Check if a tool or alias is registered."""
+        resolved_name = self._aliases.get(name, name)
+        return resolved_name in self._tools
+
     def list(self) -> builtins.list[dict[str, Any]]:
         """List schemas of all registered tools."""
         return [tool.get_schema() for tool in self._tools.values()]
