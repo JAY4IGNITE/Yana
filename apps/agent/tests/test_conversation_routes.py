@@ -117,3 +117,15 @@ async def test_retry_conversation_endpoint() -> None:
         assert "text/event-stream" in res.headers["content-type"]
         body = res.text
         assert "data: " in body
+
+
+@pytest.mark.asyncio
+async def test_fundamental_chat_endpoint() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        res = await ac.post("/api/chat", json={"message": "Hello YANA"})
+        assert res.status_code == 200
+        data = res.json()
+        assert "response" in data
+        assert len(data["response"]) > 0
+        assert data["provider"] == "ollama"

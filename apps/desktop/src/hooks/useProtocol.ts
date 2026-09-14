@@ -48,7 +48,7 @@ export function useProtocol() {
   const [petMood, setPetMood] = useState<PetMood>("happy");
 
   // 3. Window State
-  const [windowMode, setWindowMode] = useState<WindowMode>("collapsed");
+  const [windowMode, setWindowMode] = useState<WindowMode>("expanded");
   const [alwaysOnTop, setAlwaysOnTop] = useState<boolean>(true);
   const [scale, setScale] = useState<PetScale>("medium");
 
@@ -416,69 +416,14 @@ export function useProtocol() {
     }
   }, [activeSessionId, activeTask, agentConnected, currentTaskStatus?.status]);
 
-  // Send message flow (Streaming enabled)
+  // Send message flow (Ollama LLM with streaming & fallback)
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
 
-    // 1. Check for system tool command intercept (e.g. notepad)
-    if (text.toLowerCase().includes("notepad")) {
-      const toolCallId = crypto.randomUUID();
-      const userMsg: ConversationMessage = {
-        id: crypto.randomUUID(),
-        conversationId: currentConversationId,
-        role: "user",
-        content: text,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-
-      const req: PermissionRequest = {
-        version: "1.0.0",
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        type: "permission_request",
-        taskId: "task-" + Date.now(),
-        toolCallId,
-        tool: "system.open_application",
-        riskLevel: "MEDIUM",
-        description: "Launch Windows Notepad application",
-        arguments: { app_name: "notepad.exe" },
-      };
-      setPendingPermission(req);
-      setPetState("listening");
-      return;
-    }
-
-    // 2. Check for Agent Autonomous Task trigger
-    const lower = text.trim().toLowerCase();
-    if (
-      lower.startsWith("/agent ") ||
-      lower.startsWith("/task ") ||
-      lower.startsWith("agent:") ||
-      lower.includes("run agent") ||
-      lower.includes("test mock")
-    ) {
-      let goal = text.trim();
-      if (lower.startsWith("/agent ")) goal = text.trim().slice(7).trim();
-      else if (lower.startsWith("/task ")) goal = text.trim().slice(6).trim();
-      else if (lower.startsWith("agent:")) goal = text.trim().slice(6).trim();
-
-      const userMsg: ConversationMessage = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`,
-        conversationId: currentConversationId,
-        role: "user",
-        content: text,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      await handleRunAgentTask(goal);
-      return;
-    }
-
-    // 3. Normal conversational message
-    const userMsgId = crypto.randomUUID();
-    const assistantMsgId = crypto.randomUUID();
-    const sessionId = crypto.randomUUID();
+    // Normal conversational message
+    const userMsgId = crypto.randomUUID ? crypto.randomUUID() : `msg-user-${Date.now()}`;
+    const assistantMsgId = crypto.randomUUID ? crypto.randomUUID() : `msg-asst-${Date.now()}`;
+    const sessionId = crypto.randomUUID ? crypto.randomUUID() : `sess-${Date.now()}`;
 
     const userMsg: ConversationMessage = {
       id: userMsgId,
@@ -508,95 +453,138 @@ export function useProtocol() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Verify backend connectivity
     if (!agentConnected) {
-      // Offline simulation fallback
-      setTimeout(() => {
+      try {
+        await agentClient.checkHealth();
+        setAgentConnected(true);
+      } catch {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsgId
               ? {
                   ...m,
-                  content: `[Offline] I received: "${text}". Start the YANA agent for real AI streaming.`,
+                  role: "error",
+                  content:
+                    "Cannot reach YANA AI backend service at http://127.0.0.1:8765/api. Please ensure the backend agent is running.",
                   metadata: { isStreaming: false },
                 }
               : m
           )
         );
-        setPetState("speaking");
-        setIsSpeaking(true);
-        setTimeout(() => {
-          setIsSpeaking(false);
-          setIsGenerating(false);
-          setPetState("idle");
-          setAppStatus("ready");
-          setActiveSessionId(null);
-        }, 1200);
-      }, 500);
-      return;
+        setPetState("error");
+        setPetMood("concerned");
+        setIsGenerating(false);
+        setAppStatus("error");
+        setActiveSessionId(null);
+        return;
+      }
     }
 
-    // Stream from Agent backend
-    await agentClient.streamConversation(
-      currentConversationId,
-      text,
-      sessionId,
-      {
-        onToken: (token: string) => {
-          setPetState("speaking");
-          setIsSpeaking(true);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: m.content + token }
-                : m
-            )
-          );
-        },
-        onDone: (messageId, metadata) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    id: messageId || m.id,
-                    metadata: { ...metadata, isStreaming: false },
-                  }
-                : m
-            )
-          );
-          setIsSpeaking(false);
-          setIsGenerating(false);
-          setActiveSessionId(null);
-          setPetState("idle");
-          setAppStatus("ready");
-          refreshConversations();
-        },
-        onError: (err: SafeErrorPayload) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    role: "error",
-                    content: `Error: ${err.message}`,
-                    metadata: { isStreaming: false, error: err },
-                  }
-                : m
-            )
-          );
-          setIsSpeaking(false);
-          setIsGenerating(false);
-          setActiveSessionId(null);
-          setPetState("error");
-          setAppStatus("error");
-          setTimeout(() => {
+    // Stream from Agent backend (Ollama) with clean non-streaming fallback
+    try {
+      await agentClient.streamConversation(
+        currentConversationId,
+        text,
+        sessionId,
+        {
+          onToken: (token: string) => {
+            setPetState("speaking");
+            setIsSpeaking(true);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId ? { ...m, content: m.content + token } : m
+              )
+            );
+          },
+          onDone: (messageId, metadata) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? {
+                      ...m,
+                      id: messageId || m.id,
+                      metadata: { ...metadata, isStreaming: false },
+                    }
+                  : m
+              )
+            );
+            setIsSpeaking(false);
+            setIsGenerating(false);
+            setActiveSessionId(null);
             setPetState("idle");
             setAppStatus("ready");
-          }, 3500);
+            refreshConversations();
+          },
+          onError: (err: SafeErrorPayload) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? {
+                      ...m,
+                      role: "error",
+                      content: `AI Service Notice: ${err.message}`,
+                      metadata: { isStreaming: false, error: err },
+                    }
+                  : m
+              )
+            );
+            setIsSpeaking(false);
+            setIsGenerating(false);
+            setActiveSessionId(null);
+            setPetState("error");
+            setAppStatus("error");
+            setTimeout(() => {
+              setPetState("idle");
+              setAppStatus("ready");
+            }, 3500);
+          },
         },
-      },
-      controller.signal
-    );
+        controller.signal
+      );
+    } catch {
+      // Direct fallback to standard non-streaming chat endpoint
+      try {
+        const chatRes = await agentClient.sendChat(text, currentConversationId, controller.signal);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: chatRes.response,
+                  metadata: { provider: chatRes.provider, model: chatRes.model, isStreaming: false },
+                }
+              : m
+          )
+        );
+        setIsSpeaking(false);
+        setIsGenerating(false);
+        setActiveSessionId(null);
+        setPetState("idle");
+        setAppStatus("ready");
+        refreshConversations();
+      } catch (fallbackErr: unknown) {
+        const errMsg =
+          fallbackErr instanceof Error ? fallbackErr.message : "AI communication failed.";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  role: "error",
+                  content: `Error: ${errMsg}`,
+                  metadata: { isStreaming: false },
+                }
+              : m
+          )
+        );
+        setIsSpeaking(false);
+        setIsGenerating(false);
+        setActiveSessionId(null);
+        setPetState("error");
+        setAppStatus("error");
+      }
+    }
   };
 
   // Retry last turn

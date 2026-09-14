@@ -14,15 +14,34 @@ def get_ai_provider() -> AIProvider:
     if provider_name == "mock":
         return MockAIProvider()
 
-    # When auto routing is enabled or multiple tiers are configured, use TieredAIRouter
-    if settings.ai_routing_mode in ("auto", "local", "heavy"):
+    if provider_name == "ollama":
+        ollama_url = (
+            settings.ai_base_url or settings.ai_local_base_url or "http://localhost:11434/v1"
+        )
+        ollama_model = settings.ai_model or settings.ai_local_model or "llama3.2:latest"
+        logger.info(
+            "Initializing Ollama provider (base_url: %s, model: %s)",
+            ollama_url,
+            ollama_model,
+        )
+        return OpenAICompatibleProvider(
+            api_key="ollama",
+            base_url=ollama_url,
+            model=ollama_model,
+            temperature=settings.ai_temperature,
+            max_tokens=settings.ai_max_tokens,
+            timeout_seconds=float(settings.tool_timeout_seconds),
+        )
+
+    # When auto routing is explicitly enabled with multiple tiers, use TieredAIRouter
+    if settings.ai_routing_mode == "auto":
         from app.ai.router import TieredAIRouter
 
         return TieredAIRouter()
 
     if provider_name in ("openai", "nvidia", "nim", "ollama", "groq"):
         api_key = settings.ai_api_key.get_secret_value()
-        base_url = settings.ai_base_url
+        base_url: str | None = settings.ai_base_url
 
         if provider_name in ("nvidia", "nim") and not base_url:
             base_url = "https://integrate.api.nvidia.com/v1"

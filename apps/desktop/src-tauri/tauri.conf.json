@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "YANA",
-        "width": 180,
-        "height": 220,
-        "minWidth": 140,
+        "width": 380,
+        "height": 540,
+        "minWidth": 150,
         "minHeight": 180,
         "resizable": true,
         "decorations": false,

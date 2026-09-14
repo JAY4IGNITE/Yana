@@ -25,6 +25,23 @@ from app.memory.repository import conversation_repository
 
 router = APIRouter(prefix="/api/conversation", tags=["conversation"])
 conversations_router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+chat_router = APIRouter(prefix="/api", tags=["chat"])
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: str = Field(default="default", alias="conversationId")
+
+    model_config = {"populate_by_name": True}
+
+
+class ChatResponse(BaseModel):
+    response: str
+    conversation_id: str = Field(default="default", alias="conversationId")
+    provider: str = "ollama"
+    model: str = "llama3.2:latest"
+
+    model_config = {"populate_by_name": True}
 
 
 class CreateConversationRequest(BaseModel):
@@ -232,3 +249,55 @@ async def retry_conversation(
         session_id=req.session_id,
     )
     return await stream_conversation(request, send_req)
+
+
+@chat_router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse)
+async def chat_message(req: ChatRequest) -> ChatResponse:
+    """Synchronous fundamental text chat endpoint.
+
+    Routes: React -> FastAPI -> Ollama -> FastAPI -> React.
+    """
+    clean_msg = req.message.strip()
+    if not clean_msg:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    provider = get_ai_provider()
+
+    # 1. Save incoming user message
+    user_msg = Message(
+        conversation_id=req.conversation_id,
+        role=MessageRole.USER,
+        content=clean_msg,
+    )
+    await conversation_repository.add_message(user_msg)
+
+    # 2. Fetch history for context
+    history = await conversation_repository.get_messages(req.conversation_id, limit=20)
+
+    # 3. Request LLM completion from Ollama
+    ai_response = await provider.send_message(
+        messages=history,
+        system_prompt=settings.ai_system_prompt,
+    )
+
+    # 4. Save assistant response to conversation history
+    resolved_model = getattr(provider, "model", settings.ai_model)
+    assistant_msg = Message(
+        conversation_id=req.conversation_id,
+        role=MessageRole.ASSISTANT,
+        content=ai_response.content,
+        metadata=MessageMetadata(
+            provider="ollama",
+            model=resolved_model,
+            is_streaming=False,
+        ),
+    )
+    await conversation_repository.add_message(assistant_msg)
+
+    return ChatResponse(
+        response=ai_response.content,
+        conversation_id=req.conversation_id,
+        provider="ollama",
+        model=resolved_model,
+    )

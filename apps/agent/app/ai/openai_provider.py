@@ -143,13 +143,11 @@ class OpenAICompatibleProvider(AIProvider):
         except APITimeoutError as e:
             raise TimeoutError(
                 "The AI provider request timed out. Please try again.",
-                code=ErrorCode.TIMEOUT_ERROR,
                 retryable=True,
             ) from e
         except APIConnectionError as e:
             raise NetworkError(
                 "Could not connect to AI provider endpoint. Please check your network.",
-                code=ErrorCode.NETWORK_ERROR,
                 retryable=True,
             ) from e
         except APIError as e:
@@ -218,13 +216,11 @@ class OpenAICompatibleProvider(AIProvider):
         except APITimeoutError as e:
             raise TimeoutError(
                 "The AI provider request timed out. Please try again.",
-                code=ErrorCode.TIMEOUT_ERROR,
                 retryable=True,
             ) from e
         except APIConnectionError as e:
             raise NetworkError(
                 "Could not connect to the AI provider endpoint. Please check your network.",
-                code=ErrorCode.NETWORK_ERROR,
                 retryable=True,
             ) from e
         except APIError as e:

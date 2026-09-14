@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.agent_routes import router as agent_router
 from app.api.conversation_routes import (
+    chat_router,
     conversations_router,
 )
 from app.api.conversation_routes import (
@@ -101,6 +102,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 
 # Mount API routes
 app.include_router(router)
+app.include_router(chat_router)
 app.include_router(conversation_router)
 app.include_router(conversations_router)
 app.include_router(agent_router)

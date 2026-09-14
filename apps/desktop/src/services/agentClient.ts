@@ -103,8 +103,25 @@ export class AgentClient {
   }
 
   // =========================================================================
-  // Phase 02: Conversation & Streaming Services
+  // Fundamental Text Chat & Conversation Services
   // =========================================================================
+
+  async sendChat(
+    message: string,
+    conversationId: string = "default",
+    signal?: AbortSignal
+  ): Promise<{ response: string; conversationId: string; provider: string; model: string }> {
+    const res = await fetch(`${this.baseUrl}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, conversationId }),
+      signal,
+    });
+    if (!res.ok) {
+      throw new Error(`Chat request failed: HTTP ${res.status}`);
+    }
+    return res.json();
+  }
 
   async listConversations(): Promise<ConversationSummary[]> {
     const res = await fetch(`${this.baseUrl}/conversations`);

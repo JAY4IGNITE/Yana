@@ -33,10 +33,10 @@ class AgentSettings(BaseSettings):
     )
 
     # AI Configuration & Tiered Routing
-    ai_provider: str = "nvidia"  # Default active or primary
+    ai_provider: str = "ollama"  # Default active or primary
     ai_api_key: SecretStr = Field(default=SecretStr(""))
-    ai_base_url: str | None = None
-    ai_model: str = "meta/llama-3.2-11b-vision-instruct"
+    ai_base_url: str | None = "http://localhost:11434/v1"
+    ai_model: str = "llama3.2:latest"
     ai_max_tokens: int = 2048
     ai_temperature: float = 0.7
     ai_system_prompt: str = (
@@ -49,7 +49,7 @@ class AgentSettings(BaseSettings):
     # 🧠 Local Tier (Ollama)
     ai_local_provider: str = "ollama"
     ai_local_base_url: str = "http://localhost:11434/v1"
-    ai_local_model: str = "llama3.2"
+    ai_local_model: str = "llama3.2:latest"
 
     # 🚀 Heavy Reasoning & Multimodal Tier (NVIDIA NIM)
     ai_heavy_provider: str = "nvidia"
@@ -64,7 +64,7 @@ class AgentSettings(BaseSettings):
     ai_fallback_api_key: SecretStr = Field(default=SecretStr(""))
 
     # Routing strategy: 'auto' (smart routing), 'local' (force local), 'heavy' (force NIM)
-    ai_routing_mode: Literal["auto", "local", "heavy", "fallback"] = "auto"
+    ai_routing_mode: Literal["auto", "local", "heavy", "fallback"] = "local"
 
     # 🎤 Voice & Audio Subsystem
     stt_provider: str = "nvidia_parakeet"
@@ -75,7 +75,7 @@ class AgentSettings(BaseSettings):
     # Security & Policy
     permission_mode: Literal["strict", "permissive"] = "strict"
     max_execution_loops: int = 10
-    tool_timeout_seconds: int = 30
+    tool_timeout_seconds: int = 90
 
     def model_post_init(self, __context: Any) -> None:
         """Enforce production security invariants upon settings initialization."""
