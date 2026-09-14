@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { X, Server, Shield, Activity, HardDrive, Mic, Volume2, Radio, Keyboard } from "lucide-react";
-import { AudioDevice } from "../../services/agentClient";
+import React, { useState, useEffect } from "react";
+import { X, Server, Shield, Activity, HardDrive, Mic, Volume2, Radio, Keyboard, Database, Trash2, FolderGit2 } from "lucide-react";
+import { AudioDevice, agentClient, ProjectMemoryPayload } from "../../services/agentClient";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ interface SettingsModalProps {
   onSelectMic?: (id: string) => void;
   onSelectSpeaker?: (id: string) => void;
   onToggleWakeWord?: (enabled: boolean) => void;
+  onPurgeMemory?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -30,8 +31,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSelectMic,
   onSelectSpeaker,
   onToggleWakeWord,
+  onPurgeMemory,
 }) => {
-  const [activeTab, setActiveTab] = useState<"general" | "audio">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "audio" | "memory">("general");
+  const [projects, setProjects] = useState<ProjectMemoryPayload[]>([]);
+  const [purgeStatus, setPurgeStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && activeTab === "memory" && agentConnected) {
+      agentClient
+        .listProjects()
+        .then((data) => setProjects(data))
+        .catch(() => setProjects([]));
+    }
+  }, [isOpen, activeTab, agentConnected]);
+
+  const handlePurgeSession = async () => {
+    try {
+      setPurgeStatus("Purging...");
+      const res = await agentClient.bulkForgetMemories({ memoryType: "session" });
+      setPurgeStatus(`Cleared ${res.deletedCount} session memories`);
+      if (onPurgeMemory) onPurgeMemory();
+      setTimeout(() => setPurgeStatus(null), 3000);
+    } catch {
+      setPurgeStatus("Failed to purge session memories");
+      setTimeout(() => setPurgeStatus(null), 3000);
+    }
+  };
+
+  const handlePurgeAll = async () => {
+    if (!window.confirm("Are you sure you want to purge all stored memories?")) {
+      return;
+    }
+    try {
+      setPurgeStatus("Purging all...");
+      const res = await agentClient.bulkForgetMemories();
+      setPurgeStatus(`Purged ${res.deletedCount} memories`);
+      if (onPurgeMemory) onPurgeMemory();
+      setTimeout(() => setPurgeStatus(null), 3000);
+    } catch {
+      setPurgeStatus("Failed to purge memories");
+      setTimeout(() => setPurgeStatus(null), 3000);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -78,6 +120,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <Mic className="w-3.5 h-3.5" />
             <span>Voice & Audio</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("memory")}
+            className={`flex-1 py-1.5 font-medium border-b-2 transition flex items-center justify-center space-x-1 ${
+              activeTab === "memory"
+                ? "border-sky-400 text-sky-400"
+                : "border-transparent text-slate-400 hover:text-slate-300"
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Memory</span>
           </button>
         </div>
 
@@ -128,7 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-slate-400 font-mono">SQLite 3 (Async)</span>
             </div>
           </div>
-        ) : (
+        ) : activeTab === "audio" ? (
           <div className="space-y-3 text-xs">
             {/* Microphone Selection */}
             <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
@@ -207,6 +260,86 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="font-mono bg-slate-800 text-sky-300 px-2 py-0.5 rounded text-[11px] border border-slate-700">
                 Ctrl + Shift + Space
               </span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3 text-xs">
+            {/* Privacy & Redaction Shield */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+              <div className="flex items-center space-x-1.5 text-emerald-400">
+                <Shield className="w-3.5 h-3.5" />
+                <span className="font-medium">Privacy Guard & Credential Filter</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Zero credentials stored. API keys, passwords, tokens, and private secrets are
+                automatically redacted before being written to SQLite.
+              </p>
+            </div>
+
+            {/* Selective Persistence Guarantee */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+              <div className="flex items-center space-x-1.5 text-sky-400">
+                <Database className="w-3.5 h-3.5" />
+                <span className="font-medium">Selective Persistence</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                YANA does not dump raw conversations into persistent memory. Only explicit
+                facts, project configurations, and confirmed workflows are remembered long-term.
+              </p>
+            </div>
+
+            {/* Registered Projects */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1.5 text-slate-300">
+                  <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="font-medium">Registered Projects ({projects.length})</span>
+                </div>
+              </div>
+              {projects.length > 0 ? (
+                <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                  {projects.map((proj) => (
+                    <div
+                      key={proj.id}
+                      className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between"
+                    >
+                      <div className="truncate mr-2">
+                        <span className="font-medium text-slate-200">{proj.name}</span>
+                        <p className="text-[10px] text-slate-500 font-mono truncate">{proj.path}</p>
+                      </div>
+                      <span className="text-[10px] bg-slate-800 text-sky-300 px-1.5 py-0.5 rounded font-mono shrink-0">
+                        {proj.technology}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 italic">No projects registered in memory yet.</p>
+              )}
+            </div>
+
+            {/* User Memory Controls */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+              <span className="font-medium text-slate-300">User Memory Controls</span>
+              {purgeStatus && (
+                <p className="text-[11px] text-sky-400 font-mono animate-pulse">{purgeStatus}</p>
+              )}
+              <div className="flex space-x-2">
+                <button
+                  onClick={handlePurgeSession}
+                  className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-medium transition flex items-center justify-center space-x-1"
+                >
+                  <Trash2 className="w-3 h-3 text-amber-400" />
+                  <span>Clear Session</span>
+                </button>
+                <button
+                  onClick={handlePurgeAll}
+                  className="flex-1 py-1.5 px-2 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/40 rounded-lg text-[11px] font-medium transition flex items-center justify-center space-x-1"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-400" />
+                  <span>Purge All</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

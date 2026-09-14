@@ -526,6 +526,202 @@ export class AgentClient {
     }
     return res.blob();
   }
+
+  // =========================================================================
+  // Memory System APIs
+  // =========================================================================
+
+  async createMemory(payload: {
+    key: string;
+    content: string;
+    memoryType?: "temporary" | "session" | "long_term";
+    category?: string;
+    sessionId?: string;
+    metadata?: Record<string, unknown>;
+    tags?: string[];
+  }): Promise<MemoryItemPayload> {
+    const res = await fetch(`${this.baseUrl}/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to create memory: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async searchMemories(params: {
+    q: string;
+    category?: string;
+    memoryType?: string;
+    sessionId?: string;
+    limit?: number;
+  }): Promise<MemoryItemPayload[]> {
+    const query = new URLSearchParams();
+    query.set("q", params.q);
+    if (params.category) query.set("category", params.category);
+    if (params.memoryType) query.set("memoryType", params.memoryType);
+    if (params.sessionId) query.set("sessionId", params.sessionId);
+    if (params.limit) query.set("limit", params.limit.toString());
+
+    const res = await fetch(`${this.baseUrl}/memory/search?${query.toString()}`);
+    if (!res.ok) {
+      throw new Error(`Failed to search memories: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async forgetMemory(id: string): Promise<{ status: string; id: string }> {
+    const res = await fetch(`${this.baseUrl}/memory/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to forget memory: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async bulkForgetMemories(params?: {
+    category?: string;
+    memoryType?: string;
+    sessionId?: string;
+  }): Promise<{ status: string; deletedCount: number }> {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.memoryType) query.set("memoryType", params.memoryType);
+    if (params?.sessionId) query.set("sessionId", params.sessionId);
+
+    const res = await fetch(`${this.baseUrl}/memory?${query.toString()}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to bulk forget memories: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async listProjects(): Promise<ProjectMemoryPayload[]> {
+    const res = await fetch(`${this.baseUrl}/memory/projects/list`);
+    if (!res.ok) {
+      throw new Error(`Failed to list projects: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async saveProject(payload: {
+    name: string;
+    path: string;
+    technology?: string;
+    description?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ProjectMemoryPayload> {
+    const res = await fetch(`${this.baseUrl}/memory/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to save project: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async forgetProject(nameOrId: string): Promise<{ status: string; project: string }> {
+    const res = await fetch(`${this.baseUrl}/memory/projects/${encodeURIComponent(nameOrId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to forget project: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async listPreferences(category?: string): Promise<PreferencePayload[]> {
+    const query = category ? `?category=${encodeURIComponent(category)}` : "";
+    const res = await fetch(`${this.baseUrl}/memory/preferences/list${query}`);
+    if (!res.ok) {
+      throw new Error(`Failed to list preferences: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async setPreference(payload: {
+    key: string;
+    value: unknown;
+    category?: string;
+  }): Promise<PreferencePayload> {
+    const res = await fetch(`${this.baseUrl}/memory/preferences`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to set preference: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async forgetPreference(key: string): Promise<{ status: string; key: string }> {
+    const res = await fetch(`${this.baseUrl}/memory/preferences/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to forget preference: ${res.status}`);
+    }
+    return res.json();
+  }
+}
+
+export interface MemoryItemPayload {
+  id: string;
+  key: string;
+  content: string;
+  memoryType: "temporary" | "session" | "long_term";
+  category: string;
+  sessionId?: string | null;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string | null;
+}
+
+export interface ProjectMemoryPayload {
+  id: string;
+  name: string;
+  path: string;
+  technology: string;
+  description: string;
+  lastUsed: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ApplicationMemoryPayload {
+  id: string;
+  name: string;
+  executablePath: string;
+  category?: string | null;
+  lastLaunched: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface PreferencePayload {
+  key: string;
+  value: unknown;
+  category: string;
+  updatedAt: string;
+}
+
+export interface WorkflowMemoryPayload {
+  id: string;
+  name: string;
+  trigger: string;
+  description: string;
+  steps: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AudioDevice {

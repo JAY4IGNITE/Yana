@@ -14,6 +14,7 @@ from app.api.conversation_routes import (
 from app.api.conversation_routes import (
     router as conversation_router,
 )
+from app.api.memory_routes import router as memory_router
 from app.api.routes import router
 from app.api.voice_routes import router as voice_router
 from app.config import settings
@@ -85,6 +86,7 @@ app.include_router(conversation_router)
 app.include_router(conversations_router)
 app.include_router(agent_router)
 app.include_router(voice_router)
+app.include_router(memory_router)
 
 
 if __name__ == "__main__":
