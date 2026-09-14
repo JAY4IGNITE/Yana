@@ -127,11 +127,12 @@ class ComputerFindUIElementTool(BaseTool):
                 return {"scope": "Unavailable", "total_found": 0, "elements": []}
 
             # Traverse children up to depth 5
-            for ctrl, _depth in auto.WalkTree(
+            for item in auto.WalkTree(
                 root,
                 getChildren=lambda c: c.GetChildren(),
                 maxDepth=5,
             ):
+                ctrl = item[0] if isinstance(item, (tuple, list)) else item
                 c_name = (ctrl.Name or "").strip()
                 c_type = (ctrl.ControlTypeName or "").strip()
 
