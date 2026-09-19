@@ -6,7 +6,7 @@
 
 ## Key Capabilities
 
-- 🤖 **Animated AI Desktop Pet**: Expressive robot companion with state transitions (`idle`, `listening`, `thinking`, `executing`, `verifying`, `success`, `error`, `sleeping`), micro-animations, and interactive responses.
+- 🤖 **Animated AI Desktop Pet**: Expressive robot companion with state transitions (`idle`, `listening`, `thinking`, `speaking`, `executing`, `verifying`, `success`, `error`, `offline`, `sleeping`), micro-animations, and interactive responses.
 - 🔒 **Critical Security Invariant**: The AI **never** directly controls the operating system. All actions flow through a strict validation, permission authorization, and user consent pipeline:
   ```
   USER -> YANA UI -> DESKTOP IPC -> AGENT -> PLANNER -> TOOL REGISTRY
@@ -33,7 +33,7 @@ yana/
 │   │   ├── package.json
 │   │   └── vite.config.ts
 │   └── agent/                        # Python AI Agent Core (FastAPI, Pydantic, asyncio)
-│       ├── app/                      # Core modules: api, core, tools, permissions, memory, ai, voice
+│       ├── app/                      # Modules: api, core, tools, permissions, memory, ai, voice, browser, security, protocol
 │       ├── tests/                    # pytest test suite (230+ tests)
 │       ├── yana_agent.spec           # PyInstaller bundling specification
 │       └── pyproject.toml
@@ -153,3 +153,4 @@ Validates code with:
 - [Reproducible Build Guide](docs/development/build.md)
 - [Windows Troubleshooting Guide](docs/development/troubleshooting.md)
 - [Developer Setup Guide](docs/development/setup.md)
+- [Manual Desktop Testing Guide](docs/development/manual-testing-desktop.md)
