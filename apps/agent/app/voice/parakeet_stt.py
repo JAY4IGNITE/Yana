@@ -69,11 +69,18 @@ class NvidiaParakeetSTTProvider(SpeechToTextProvider):
                     body = res.json()
                     return body.get("text", "").strip()
                 elif res.status_code == 404:
-                    # If /audio/transcriptions not available on this NIM endpoint, fallback cleanly
-                    logger.warning(
-                        "NVIDIA ASR endpoint returned 404. Falling back to local/mock transcript."
+                    # A 404 means the transcription endpoint/model path is wrong.
+                    # Surface it as an error so misconfiguration is visible during
+                    # setup instead of silently returning an empty transcript that
+                    # looks like "heard nothing".
+                    logger.error(
+                        "NVIDIA ASR endpoint 404 at %s. Check base_url/model configuration.",
+                        endpoint,
                     )
-                    return ""
+                    raise SpeechToTextError(
+                        f"NVIDIA ASR endpoint not found (404) at '{endpoint}'. "
+                        "Verify YANA_STT_MODEL and the NIM base URL / ASR interface."
+                    )
                 else:
                     logger.error(
                         "NVIDIA Parakeet transcription failed with code %d: %s",

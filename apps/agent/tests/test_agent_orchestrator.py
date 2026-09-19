@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from app.core.executor.orchestrator import AgentOrchestrator
-from app.core.planner.base import BasePlanner, Plan, PlanStep
+from app.core.planner.base import BasePlanner, Plan, PlanStep, RuleBasedPlanner
 from app.core.task_manager import TaskManager
 from app.protocol.models import (
     BaseProtocolModel,
@@ -54,7 +54,7 @@ def orchestrator_env() -> AgentOrchestrator:
 
     tm = TaskManager()
     return AgentOrchestrator(
-        planner=None,  # will default to RuleBasedPlanner
+        planner=RuleBasedPlanner(),  # pin deterministic planning for pipeline mechanics
         tool_registry=registry,
         task_manager=tm,
         max_retries=2,
@@ -203,7 +203,7 @@ async def test_orchestrator_real_tools_pipeline() -> None:
 
     reg = register_default_tools(ToolRegistry())
     orchestrator = AgentOrchestrator(
-        planner=None,
+        planner=RuleBasedPlanner(),  # deterministic plan for real-tool pipeline check
         tool_registry=reg,
         task_manager=TaskManager(),
     )

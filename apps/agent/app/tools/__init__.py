@@ -1,5 +1,7 @@
 """Tools package initialization and default registration for YANA Phase 07."""
 
+from app.errors import ToolError
+from app.logger import logger
 from app.tools.base import BaseTool
 from app.tools.browser import (
     BrowserBackTool,
@@ -208,8 +210,15 @@ def register_default_tools(target_registry: ToolRegistry | None = None) -> ToolR
     for tool in all_tools:
         try:
             reg.register(tool)
-        except Exception:
-            pass
+        except ToolError:
+            # Expected idempotency case: the tool name is already registered
+            # (register_default_tools can run more than once on a registry).
+            logger.debug("Tool '%s' already registered; skipping.", tool.name)
+        except Exception as exc:
+            # Any OTHER failure is a real problem (bad tool init, name clash of a
+            # different kind); surface it instead of silently dropping the tool.
+            logger.warning("Failed to register tool '%s': %s", getattr(tool, "name", tool), exc)
+            raise
 
     # Aliases
     reg.register_alias("filesystem.read_file", "filesystem.read")

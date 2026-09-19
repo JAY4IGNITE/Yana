@@ -128,4 +128,6 @@ async def test_fundamental_chat_endpoint() -> None:
         data = res.json()
         assert "response" in data
         assert len(data["response"]) > 0
-        assert data["provider"] == "ollama"
+        # The endpoint now reports the provider that ACTUALLY served the
+        # request. Under test the provider is monkeypatched to MockAIProvider.
+        assert data["provider"] == "mock"

@@ -203,9 +203,18 @@ class DatabaseManager:
 
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """Obtain an active database connection within an async context."""
+        """Obtain an active database connection within an async context.
+
+        Enables WAL journaling and a busy timeout so brief write contention
+        between concurrent async writers (memory, repository, audit all share
+        yana.db) retries instead of immediately raising "database is locked",
+        and turns on foreign_keys so declared ON DELETE CASCADE actually fires.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
+            await db.execute("PRAGMA foreign_keys=ON")
             yield db
 
     async def check_health(self) -> dict[str, Any]:

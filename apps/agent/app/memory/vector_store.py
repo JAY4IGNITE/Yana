@@ -14,12 +14,16 @@ from app.logger import logger
 
 
 class LocalVectorStore:
-    """Zero-dependency vector memory store with semantic search and cosine similarity.
+    """Local vector memory store with cosine-similarity search.
 
     Embeddings can be sourced from:
-    1. Local Ollama embedding model (e.g. nomic-embed-text / all-minilm) if available.
-    2. Dense character n-gram hashing vectorizer (always available offline
-       with zero external calls).
+    1. A real semantic embedding model via local Ollama (e.g. nomic-embed-text)
+       when it is running — this provides genuine semantic similarity.
+    2. A deterministic LEXICAL feature-hashing fallback (offline, zero external
+       calls). This is token-overlap based, NOT semantic: two texts that share
+       no tokens score ~0 even if they mean the same thing. It is reproducible
+       across process restarts (stable hashing), so persisted vectors remain
+       comparable.
     """
 
     def __init__(self, db_path: Path | None = None) -> None:
@@ -70,13 +74,19 @@ class LocalVectorStore:
         except Exception:
             pass
 
-        # 2. Deterministic dense semantic hash vectorizer (offline fallback)
+        # 2. Deterministic lexical feature-hashing fallback (offline).
+        # Uses a STABLE hash (blake2b) rather than the builtin hash(), which is
+        # salted per-process (PYTHONHASHSEED) and would make persisted vectors
+        # incomparable after a restart.
+        import hashlib
+
         tokens = text.lower().split()
         vec = np.zeros(self.vector_dim, dtype=np.float32)
         for token in tokens:
-            h = hash(token)
-            idx = abs(h) % self.vector_dim
-            sign = 1.0 if (h > 0) else -1.0
+            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+            h = int.from_bytes(digest, "big")
+            idx = h % self.vector_dim
+            sign = 1.0 if (h & 1) else -1.0
             vec[idx] += sign
 
         # L2 normalize vector
@@ -147,6 +157,18 @@ class LocalVectorStore:
         for r in rows:
             try:
                 emb = np.array(json.loads(r["embedding"]), dtype=np.float32)
+                if emb.shape != query_vec.shape:
+                    # Stored vector was produced by a different encoder
+                    # (e.g. 768-dim Ollama vs 128-dim offline fallback). It is
+                    # not comparable; skip it loudly rather than silently.
+                    logger.debug(
+                        "Skipping vector row %s: dim %s != query dim %s "
+                        "(embedding encoder changed).",
+                        r["id"],
+                        emb.shape,
+                        query_vec.shape,
+                    )
+                    continue
                 e_norm = np.linalg.norm(emb)
                 if e_norm > 0:
                     emb = emb / e_norm

@@ -29,11 +29,16 @@ class PermissionManager:
         self._user_consents: dict[str, bool] = {}
 
     def set_consent(self, tool_call_id: str, granted: bool) -> None:
-        """Record explicit user decision for a pending tool call."""
+        """Record explicit user decision for a pending tool call.
+
+        Consent is SINGLE-USE: it is consumed by the next successful
+        authorization for this id (see ``authorize``), so a one-time approval
+        cannot be replayed to authorize an unbounded number of later actions.
+        """
         self._user_consents[tool_call_id] = granted
 
     def is_approved(self, tool_call_id: str) -> bool:
-        """Check whether explicit user consent has been granted for a tool call."""
+        """Check whether explicit user consent is currently recorded (non-consuming)."""
         return self._user_consents.get(tool_call_id, False)
 
     def authorize(
@@ -42,6 +47,7 @@ class PermissionManager:
         tool_call_id: str,
         arguments: dict[str, Any],
         context: dict[str, Any] | None = None,
+        consume: bool = False,
     ) -> PermissionDecision:
         """Authorize a tool call execution against risk levels, user consent, and security policy.
 
@@ -52,6 +58,11 @@ class PermissionManager:
         - HIGH and CRITICAL tools ALWAYS require explicit user consent, even in permissive mode.
         - Unauthenticated or forged consents are rejected.
         - Untrusted context escalates evaluation and rejects unconfirmed execution.
+
+        When ``consume`` is True (the enforcement/execution gate), a recorded
+        consent is single-use and is removed once acted upon, so a one-time
+        approval cannot be replayed to authorize later actions. When False (a
+        preview/decision check), consent is left intact.
         """
         ctx = context or {}
 
@@ -59,6 +70,9 @@ class PermissionManager:
         # an untrusted document/website/email, require user confirmation regardless of mode
         if ctx.get("is_untrusted_source") or ctx.get("from_untrusted_content"):
             if tool_call_id in self._user_consents and self._user_consents[tool_call_id]:
+                if consume:
+                    # Consume the grant so it cannot be replayed.
+                    self._user_consents.pop(tool_call_id, None)
                 return PermissionDecision(
                     requires_prompt=False,
                     granted=True,
@@ -90,9 +104,15 @@ class PermissionManager:
                     reason="Permissive mode enabled for medium risk.",
                 )
 
-        # HIGH and CRITICAL risk tools ALWAYS require explicit user consent
+        # HIGH and CRITICAL risk tools ALWAYS require explicit user consent.
+        # Consent is single-use: consume it here so it authorizes exactly one
+        # execution and cannot be replayed for subsequent calls.
         if tool_call_id in self._user_consents:
-            granted = self._user_consents[tool_call_id]
+            granted = (
+                self._user_consents.pop(tool_call_id)
+                if consume
+                else self._user_consents[tool_call_id]
+            )
             if granted:
                 return PermissionDecision(
                     requires_prompt=False,
@@ -129,8 +149,8 @@ class PermissionManager:
         arguments: dict[str, Any],
         context: dict[str, Any] | None = None,
     ) -> None:
-        """Raise PermissionError if permission is not authorized."""
-        decision = self.authorize(tool, tool_call_id, arguments, context=context)
+        """Raise PermissionError if permission is not authorized (consuming consent)."""
+        decision = self.authorize(tool, tool_call_id, arguments, context=context, consume=True)
         if not decision.granted:
             raise PermissionError(
                 f"Permission denied for '{tool.name}' "

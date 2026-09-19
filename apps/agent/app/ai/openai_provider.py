@@ -41,6 +41,12 @@ from app.logger import logger
 class OpenAICompatibleProvider(AIProvider):
     """Provider connecting to any OpenAI-compatible API endpoint."""
 
+    # Cancellation is tracked in a PROCESS-WIDE registry keyed by session_id,
+    # not per-instance. This guarantees that a /cancel request cancels the
+    # active /stream even if the two requests happen to resolve different
+    # provider instances (the factory memoizes, but this is defense in depth).
+    _cancelled_sessions: set[str] = set()
+
     def __init__(
         self,
         api_key: str,
@@ -54,9 +60,6 @@ class OpenAICompatibleProvider(AIProvider):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_seconds = timeout_seconds
-
-        # Active streaming tasks for cooperative cancellation
-        self._cancelled_sessions: set[str] = set()
 
         clean_key = api_key.strip()
         if not clean_key:
@@ -106,6 +109,12 @@ class OpenAICompatibleProvider(AIProvider):
             dur_ms = (time.perf_counter() - start_t) * 1000.0
             performance_monitor.record_ai_latency(dur_ms)
 
+            if not response.choices:
+                raise AIError(
+                    "AI provider returned no completion choices.",
+                    code=ErrorCode.AI_ERROR,
+                    retryable=True,
+                )
             choice = response.choices[0]
             content = choice.message.content or ""
             finish_reason = choice.finish_reason or "stop"

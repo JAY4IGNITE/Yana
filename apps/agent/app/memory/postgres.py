@@ -27,7 +27,12 @@ class PostgresDatabaseManager:
             await self._init_schema()
             return True
         except Exception as e:
-            logger.warning("PostgreSQL connection unavailable (%s). Falling back to SQLite.", e)
+            # Log only the exception TYPE, never the interpolated error, which
+            # can embed the full DSN (including the password) in cleartext.
+            logger.warning(
+                "PostgreSQL connection unavailable (%s). Falling back to SQLite.",
+                type(e).__name__,
+            )
             self._connected = False
             return False
 

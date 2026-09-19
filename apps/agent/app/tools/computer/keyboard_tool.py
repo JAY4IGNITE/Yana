@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from app.errors import ToolError, ValidationError
+from app.logger import logger
 from app.protocol.models import RiskLevel, VerificationResult
 from app.tools.base import BaseTool
 
@@ -55,11 +56,12 @@ KEY_MAP: dict[str, int] = {
     "windows": VK_LWIN,
 }
 
-# Block dangerous / disruptive system hotkeys
+# Block dangerous / disruptive system hotkeys. Stored as frozensets so the
+# check is order-independent (e.g. ["alt","ctrl","delete"] is blocked too).
 PROHIBITED_HOTKEYS = {
-    ("ctrl", "alt", "delete"),
-    ("ctrl", "alt", "del"),
-    ("win", "l"),  # lock screen
+    frozenset({"ctrl", "alt", "delete"}),
+    frozenset({"ctrl", "alt", "del"}),
+    frozenset({"win", "l"}),  # lock screen
 }
 
 
@@ -72,44 +74,76 @@ def _dispatch_vk(vk: int, down: bool = True, up: bool = True) -> None:
         user32.keybd_event(vk, 0, 2, 0)
 
 
+# dwExtraInfo is a pointer-sized integer (ULONG_PTR); ctypes.c_size_t matches
+# the platform bitness so that sizeof(_INPUT) equals what the OS expects
+# (40 bytes on x64). A KEYBDINPUT-only union would be too small and SendInput
+# would silently inject nothing on 64-bit Windows.
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", ctypes.c_long),
+        ("dy", ctypes.c_long),
+        ("mouseData", ctypes.c_ulong),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", ctypes.c_ushort),
+        ("wScan", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [
+        ("uMsg", ctypes.c_ulong),
+        ("wParamL", ctypes.c_ushort),
+        ("wParamH", ctypes.c_ushort),
+    ]
+
+
+class _INPUTUNION(ctypes.Union):
+    # Include mi/hi so the union (and therefore INPUT) is sized like the OS's
+    # native INPUT structure; a KEYBDINPUT-only union makes sizeof(INPUT) too
+    # small on 64-bit Windows and SendInput silently injects nothing.
+    _fields_ = [("mi", _MOUSEINPUT), ("ki", _KEYBDINPUT), ("hi", _HARDWAREINPUT)]
+
+
+class _INPUT(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [("type", ctypes.c_ulong), ("u", _INPUTUNION)]
+
+
 def _dispatch_unicode_char(char: str) -> None:
     """Send a unicode character using user32.SendInput."""
     user32 = ctypes.windll.user32
-
-    class KEYBDINPUT(ctypes.Structure):
-        _fields_ = [
-            ("wVk", ctypes.c_ushort),
-            ("wScan", ctypes.c_ushort),
-            ("dwFlags", ctypes.c_ulong),
-            ("time", ctypes.c_ulong),
-            ("dwExtraInfo", ctypes.c_void_p),
-        ]
-
-    class INPUT(ctypes.Structure):
-        class _INPUT(ctypes.Union):
-            _fields_ = [("ki", KEYBDINPUT)]
-
-        _anonymous_ = ("_input",)
-        _fields_ = [("type", ctypes.c_ulong), ("_input", _INPUT)]
 
     KEYEVENTF_UNICODE = 0x0004
     KEYEVENTF_KEYUP = 0x0002
     INPUT_KEYBOARD = 1
 
     code = ord(char)
-    inp_down = INPUT(
-        type=INPUT_KEYBOARD,
-        ki=KEYBDINPUT(wVk=0, wScan=code, dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=None),
-    )
-    inp_up = INPUT(
-        type=INPUT_KEYBOARD,
-        ki=KEYBDINPUT(
-            wVk=0, wScan=code, dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=None
-        ),
+    inp_down = _INPUT(type=INPUT_KEYBOARD)
+    inp_down.ki = _KEYBDINPUT(wVk=0, wScan=code, dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=0)
+    inp_up = _INPUT(type=INPUT_KEYBOARD)
+    inp_up.ki = _KEYBDINPUT(
+        wVk=0, wScan=code, dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=0
     )
 
-    inputs = (INPUT * 2)(inp_down, inp_up)
-    user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+    inputs = (_INPUT * 2)(inp_down, inp_up)
+    sent = user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(_INPUT))
+    if sent != 2:
+        # 0 means the OS rejected/blocked injection (e.g. UIPI, locked session).
+        logger.warning(
+            "SendInput injected %d/2 events for char U+%04X (input may have been blocked).",
+            sent,
+            code,
+        )
 
 
 class ComputerTypeTextTool(BaseTool):
@@ -312,7 +346,7 @@ class ComputerHotkeyTool(BaseTool):
                 raise ValidationError(f"Unrecognized key in hotkey sequence: '{k}'")
             normalized_keys.append(k_clean)
 
-        if tuple(normalized_keys) in PROHIBITED_HOTKEYS:
+        if frozenset(normalized_keys) in PROHIBITED_HOTKEYS:
             raise ValidationError(
                 f"Hotkey combination '{' + '.join(keys)}' is prohibited by security policy."
             )

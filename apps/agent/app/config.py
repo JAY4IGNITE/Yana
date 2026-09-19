@@ -66,6 +66,13 @@ class AgentSettings(BaseSettings):
     # Routing strategy: 'auto' (smart routing), 'local' (force local), 'heavy' (force NIM)
     ai_routing_mode: Literal["auto", "local", "heavy", "fallback"] = "local"
 
+    # Planner strategy for autonomous task execution:
+    #   'auto' - LLM-driven planning when a real AI provider is configured,
+    #            deterministic rule-based planning when provider is 'mock'.
+    #   'llm'  - always use the LLM planner (falls back to rules on parse errors).
+    #   'rule' - always use the deterministic rule-based planner.
+    planner_mode: Literal["auto", "llm", "rule"] = "auto"
+
     # 🎤 Voice & Audio Subsystem
     stt_provider: str = "nvidia_parakeet"
     stt_model: str = "nvidia/parakeet-ctc-1.1b-asr"

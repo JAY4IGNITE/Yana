@@ -147,12 +147,19 @@ class VoicePipeline:
             # 4. Enter SPEAKING state
             self._set_state(VoiceState.SPEAKING)
 
+            # Return the synthesized audio (base64) so the client can actually
+            # play the response, not just its length. audio_format mirrors the
+            # provider's output so the frontend knows how to decode it.
+            import base64
+
             return {
                 "status": "success",
                 "state": self._state.value,
                 "transcript": transcript,
                 "response": response_text,
                 "audio_bytes_length": len(audio_bytes),
+                "audio_base64": base64.b64encode(audio_bytes).decode("ascii"),
+                "audio_format": getattr(self.tts, "output_format", "audio/wav"),
             }
         except (
             SpeechToTextError,

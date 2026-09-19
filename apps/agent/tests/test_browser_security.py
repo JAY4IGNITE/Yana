@@ -14,10 +14,26 @@ from app.tools.browser.security import (
 
 def test_validate_safe_url_allows_standard_protocols():
     assert validate_safe_url("https://example.com") == "https://example.com"
-    assert validate_safe_url("http://localhost:8080") == "http://localhost:8080"
-    assert validate_safe_url("data:text/html,<h1>Test</h1>") == "data:text/html,<h1>Test</h1>"
     # Bare domain normalizes to https://
     assert validate_safe_url("duckduckgo.com") == "https://duckduckgo.com"
+
+
+def test_validate_safe_url_blocks_ssrf_internal_hosts():
+    # SSRF protection: loopback, link-local metadata, and private ranges blocked.
+    with pytest.raises(PermissionError, match="SSRF"):
+        validate_safe_url("http://localhost:8080")
+    with pytest.raises(PermissionError, match="SSRF"):
+        validate_safe_url("http://169.254.169.254/latest/meta-data/")
+    with pytest.raises(PermissionError, match="SSRF"):
+        validate_safe_url("http://127.0.0.1")
+    with pytest.raises(PermissionError, match="SSRF"):
+        validate_safe_url("http://10.0.0.5/admin")
+
+
+def test_validate_safe_url_blocks_data_scheme():
+    # data: URLs can smuggle active content and are now blocked.
+    with pytest.raises(PermissionError, match="prohibited protocol 'data:'"):
+        validate_safe_url("data:text/html,<h1>Test</h1>")
 
 
 def test_validate_safe_url_blocks_dangerous_protocols():

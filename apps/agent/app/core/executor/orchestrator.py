@@ -22,7 +22,7 @@ from app.core.executor.failure_recovery import (
     calculate_backoff_delay,
 )
 from app.core.executor.pipeline import ExecutionPipeline
-from app.core.planner.base import BasePlanner, RuleBasedPlanner
+from app.core.planner.base import BasePlanner, LLMPlanner, RuleBasedPlanner
 from app.core.task_manager import TaskManager
 from app.core.task_manager import task_manager as global_task_manager
 from app.core.telemetry.tracer import task_tracer
@@ -63,7 +63,7 @@ class AgentOrchestrator:
         max_retries: int = 2,
         step_timeout_seconds: float | None = None,
     ) -> None:
-        self.planner = planner or RuleBasedPlanner()
+        self.planner = planner if planner is not None else self._default_planner()
         self.registry = tool_registry or registry
         self.permissions = perm_manager or permission_manager
         self.pipeline = pipeline or ExecutionPipeline(
@@ -82,6 +82,26 @@ class AgentOrchestrator:
         )
         # Event handles for pause/resume coordination
         self._pause_events: dict[str, asyncio.Event] = {}
+
+    @staticmethod
+    def _default_planner() -> BasePlanner:
+        """Select the default planner based on settings.planner_mode.
+
+        - 'rule': deterministic keyword planner.
+        - 'llm': LLM-driven planner (rule-based fallback on parse errors).
+        - 'auto' (default): LLM planning when a real AI provider is configured,
+          rule-based when the provider is 'mock' (tests / offline) so behaviour
+          stays fast and deterministic.
+        """
+        mode = settings.planner_mode
+        if mode == "rule":
+            return RuleBasedPlanner()
+        if mode == "llm":
+            return LLMPlanner(fallback_planner=RuleBasedPlanner())
+        # auto
+        if settings.ai_provider.lower().strip() == "mock":
+            return RuleBasedPlanner()
+        return LLMPlanner(fallback_planner=RuleBasedPlanner())
 
     async def pause_task(
         self,

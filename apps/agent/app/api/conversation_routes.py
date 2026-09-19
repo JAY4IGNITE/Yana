@@ -281,14 +281,27 @@ async def chat_message(req: ChatRequest) -> ChatResponse:
         system_prompt=settings.ai_system_prompt,
     )
 
-    # 4. Save assistant response to conversation history
-    resolved_model = getattr(provider, "model", settings.ai_model)
+    # 4. Save assistant response to conversation history.
+    # Report the provider/model that ACTUALLY served the request (from the
+    # response metadata, or the live router tier) rather than a hardcoded
+    # label, so a mock/degraded response is never mislabeled as real Ollama.
+    resp_meta = ai_response.metadata
+    resolved_provider = (
+        getattr(provider, "active_tier", None)
+        or (resp_meta.provider if resp_meta else None)
+        or settings.ai_provider
+    )
+    resolved_model = (
+        getattr(provider, "active_model", None)
+        or (resp_meta.model if resp_meta else None)
+        or getattr(provider, "model", settings.ai_model)
+    )
     assistant_msg = Message(
         conversation_id=req.conversation_id,
         role=MessageRole.ASSISTANT,
         content=ai_response.content,
         metadata=MessageMetadata(
-            provider="ollama",
+            provider=resolved_provider,
             model=resolved_model,
             is_streaming=False,
         ),
@@ -298,6 +311,6 @@ async def chat_message(req: ChatRequest) -> ChatResponse:
     return ChatResponse(
         response=ai_response.content,
         conversation_id=req.conversation_id,
-        provider="ollama",
+        provider=resolved_provider,
         model=resolved_model,
     )

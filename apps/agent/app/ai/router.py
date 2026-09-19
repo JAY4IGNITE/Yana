@@ -124,12 +124,23 @@ class TieredAIRouter(AIProvider):
 
     async def select_provider(self, messages: list[Message]) -> tuple[AIProvider, str]:
         """Select optimal provider based on query complexity and tier availability."""
-        # Explicit overrides
+        # Explicit overrides. Record the active tier/model uniformly so that
+        # active_tier/active_model are accurate in forced routing modes too.
         if self.routing_mode == "heavy" and self._heavy_provider:
+            self._last_active_tier = "nvidia-heavy"
+            self._last_active_model = getattr(
+                self._heavy_provider, "model", settings.ai_heavy_model
+            )
             return self._heavy_provider, "nvidia-heavy"
         if self.routing_mode == "local" and self._local_provider:
+            self._last_active_tier = "ollama-local"
+            self._last_active_model = getattr(
+                self._local_provider, "model", settings.ai_local_model
+            )
             return self._local_provider, "ollama-local"
         if self.routing_mode == "fallback":
+            self._last_active_tier = "fallback"
+            self._last_active_model = "mock"
             return self._fallback_provider or MockAIProvider(), "fallback"
 
         choice: tuple[AIProvider, str]
@@ -163,21 +174,28 @@ class TieredAIRouter(AIProvider):
             return await primary_provider.send_message(messages, system_prompt)
         except Exception as primary_err:
             logger.warning(
-                "TieredAIRouter: %s failed (%s). Attempting fallback...",
+                "TieredAIRouter: %s failed (%s). Attempting real-tier fallback...",
                 tier_name,
                 primary_err,
             )
-            # Fallback chain
+            # Fallback chain across REAL tiers only.
             if primary_provider != self._heavy_provider and self._heavy_provider:
                 try:
                     logger.info("TieredAIRouter: Falling back to NVIDIA NIM...")
+                    self._last_active_tier = "nvidia-heavy"
                     return await self._heavy_provider.send_message(messages, system_prompt)
                 except Exception as heavy_err:
                     logger.error("TieredAIRouter: Heavy fallback also failed: %s", heavy_err)
+                    primary_err = heavy_err
 
-            # Ultimate fallback to mock / safe response
-            fallback = self._fallback_provider or MockAIProvider()
-            return await fallback.send_message(messages, system_prompt)
+            # Only serve canned mock output when the operator explicitly opted
+            # into it via routing_mode="fallback". Otherwise propagate the real
+            # error so a dead AI is never mistaken for a working one.
+            if self.routing_mode == "fallback":
+                fallback = self._fallback_provider or MockAIProvider()
+                self._last_active_tier = "fallback"
+                return await fallback.send_message(messages, system_prompt)
+            raise primary_err
 
     async def stream_message(
         self,
@@ -196,26 +214,26 @@ class TieredAIRouter(AIProvider):
         except Exception as primary_err:
             logger.warning("TieredAIRouter: %s stream failed (%s).", tier_name, primary_err)
             if not first_token_received:
-                # If failed before streaming started, try secondary provider
+                # Failed before any token: try a real backup tier (heavy).
                 backup_provider = (
                     self._heavy_provider
                     if primary_provider != self._heavy_provider
-                    else (self._fallback_provider or MockAIProvider())
+                    else None
                 )
                 if backup_provider:
                     logger.info("TieredAIRouter: Retrying stream with backup provider...")
-                    try:
-                        async for token in backup_provider.stream_message(
-                            messages, system_prompt, session_id
-                        ):
-                            yield token
-                        return
-                    except Exception as backup_err:
-                        logger.error("TieredAIRouter: Backup stream error: %s", backup_err)
+                    self._last_active_tier = "nvidia-heavy"
+                    async for token in backup_provider.stream_message(
+                        messages, system_prompt, session_id
+                    ):
+                        yield token
+                    return
 
-            # If already yielded or backup failed, raise or finish
-            if not first_token_received:
-                yield f"[AI routing notice: Primary {tier_name} service encountered an issue.]"
+            # Whether the failure happened mid-stream (partial output already
+            # sent) or before any token with no real backup, re-raise so the
+            # SSE layer emits an explicit error/incomplete signal instead of
+            # silently truncating or fabricating a fake notice token.
+            raise
 
     async def cancel(self, session_id: str) -> None:
         """Broadcast cancellation to all active providers."""

@@ -14,6 +14,7 @@ import psutil
 from PIL import Image, ImageDraw, ImageGrab
 
 from app.errors import ToolError, ValidationError
+from app.logger import logger
 from app.protocol.models import RiskLevel, VerificationResult
 from app.tools.base import BaseTool
 from app.tools.security_policy import validate_safe_path
@@ -346,8 +347,15 @@ class ComputerScreenshotTool(BaseTool):
             try:
                 img = ImageGrab.grab()
                 source = "native_desktop"
-            except Exception:
-                # Fallback for headless CI / non-interactive service sessions
+            except Exception as grab_err:
+                # Fallback for headless CI / non-interactive service sessions.
+                # This is a PLACEHOLDER, not a real capture, so it is flagged as
+                # degraded and reported unverified (see verify()) — callers must
+                # not treat it as an actual view of the screen.
+                logger.warning(
+                    "Real screen capture failed (%s); producing degraded placeholder image.",
+                    grab_err,
+                )
                 img = Image.new("RGB", (1920, 1080), color=(18, 24, 38))
                 draw = ImageDraw.Draw(img)
                 draw.text(
@@ -368,6 +376,7 @@ class ComputerScreenshotTool(BaseTool):
                 "format": "PNG",
                 "size_bytes": file_size,
                 "source": source,
+                "degraded": source == "headless_fallback",
             }
         except Exception as err:
             raise ToolError(f"Screenshot capture failed: {str(err)}") from err
@@ -376,6 +385,17 @@ class ComputerScreenshotTool(BaseTool):
         file_path_str = output.get("file_path") if isinstance(output, dict) else None
         verified = False
         notes = "Screenshot file not found."
+
+        is_degraded = bool(output.get("degraded")) if isinstance(output, dict) else False
+        if is_degraded:
+            # A placeholder image was produced because real capture failed; do
+            # not verify it as a genuine screenshot.
+            return VerificationResult(
+                task_id="computer",
+                tool_call_id="computer.screenshot",
+                verified=False,
+                notes="Real screen capture unavailable; produced a degraded placeholder image.",
+            )
 
         if file_path_str:
             p = Path(file_path_str)

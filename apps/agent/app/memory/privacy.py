@@ -118,6 +118,24 @@ def sanitize_memory_metadata(
             cleaned[k] = sanitize_memory_content(v, strict=strict)
         elif isinstance(v, dict):
             cleaned[k] = sanitize_memory_metadata(v, strict=strict)
+        elif isinstance(v, list):
+            cleaned[k] = [sanitize_json_value(item, strict=strict) for item in v]
         else:
             cleaned[k] = v
     return cleaned
+
+
+def sanitize_json_value(value: Any, strict: bool = False) -> Any:
+    """Recursively redact secrets from an arbitrary JSON-like value.
+
+    Handles strings, dicts, and lists (e.g. workflow step lists or structured
+    preference values) so secrets embedded in non-``str`` structures are scrubbed
+    before persistence, not just top-level strings.
+    """
+    if isinstance(value, str):
+        return sanitize_memory_content(value, strict=strict)
+    if isinstance(value, dict):
+        return sanitize_memory_metadata(value, strict=strict)
+    if isinstance(value, list):
+        return [sanitize_json_value(item, strict=strict) for item in value]
+    return value

@@ -18,12 +18,27 @@ class NaturalEdgeTTSProvider(TextToSpeechProvider):
     """
 
     name: str = "edge_tts"
+    # edge-tts streams MPEG audio; expose it so callers decode correctly.
+    output_format: str = "audio/mpeg"
 
     def __init__(self, voice: str | None = None) -> None:
         self.default_voice = voice or settings.tts_voice or "en-US-AriaNeural"
-        self._available = True
+        self._available: bool | None = None
 
     def is_available(self) -> bool:
+        """Report availability based on whether the edge_tts package is importable.
+
+        The result is cached; a synthesize() failure also flips it to False so
+        callers can detect an unusable provider before entering SPEAKING.
+        """
+        if self._available is None:
+            try:
+                import edge_tts  # noqa: F401
+
+                self._available = True
+            except Exception as e:  # pragma: no cover - import environment specific
+                logger.warning("edge-tts is not importable: %s", e)
+                self._available = False
         return self._available
 
     async def synthesize(self, text: str, voice: str | None = None) -> bytes:
@@ -49,6 +64,7 @@ class NaturalEdgeTTSProvider(TextToSpeechProvider):
             return result
         except Exception as e:
             logger.error("Edge TTS synthesis failed: %s", e)
+            self._available = False
             raise TextToSpeechError(f"Natural speech synthesis failed: {e}") from e
 
     async def list_voices(self) -> list[dict[str, Any]]:

@@ -17,6 +17,7 @@ from app.memory.models import (
     WorkflowMemory,
 )
 from app.memory.privacy import (
+    sanitize_json_value,
     sanitize_memory_content,
     sanitize_memory_metadata,
 )
@@ -139,14 +140,16 @@ class MemoryManager:
 
     async def get_memory(self, memory_id: str) -> MemoryItem | None:
         """Retrieve a specific memory item by ID."""
+        now_iso = datetime.now(UTC).isoformat()
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
                 """
                 SELECT id, key, content, memory_type, category, session_id,
                        metadata, tags, created_at, updated_at, expires_at
-                FROM memories WHERE id = ?
+                FROM memories
+                WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)
                 """,
-                (memory_id,),
+                (memory_id, now_iso),
             )
             row = await cursor.fetchone()
             if not row:
@@ -178,8 +181,8 @@ class MemoryManager:
             if data:
                 return MemoryItem.model_validate(data)
 
-        query = "SELECT * FROM memories WHERE key = ?"
-        params: list[Any] = [key]
+        query = "SELECT * FROM memories WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)"
+        params: list[Any] = [key, datetime.now(UTC).isoformat()]
 
         if memory_type is not None:
             query += " AND memory_type = ?"
@@ -225,9 +228,11 @@ class MemoryManager:
                    metadata, tags, created_at, updated_at, expires_at
             FROM memories
             WHERE (content LIKE ? OR key LIKE ? OR tags LIKE ?)
+              AND (expires_at IS NULL OR expires_at > ?)
         """
         like_pattern = f"%{query}%"
-        params: list[Any] = [like_pattern, like_pattern, like_pattern]
+        now_iso = datetime.now(UTC).isoformat()
+        params: list[Any] = [like_pattern, like_pattern, like_pattern, now_iso]
 
         if category is not None:
             sql += " AND category = ?"
@@ -518,9 +523,9 @@ class MemoryManager:
         category: str = "general",
     ) -> UserPreference:
         """Persist a user preference key-value configuration."""
-        clean_val = value
-        if isinstance(value, str):
-            clean_val = sanitize_memory_content(value, strict=self.strict_privacy)
+        # Redact secrets from ANY value shape (str, dict, list), not just strings,
+        # so a structured preference like {"api_key": "sk-..."} is scrubbed too.
+        clean_val = sanitize_json_value(value, strict=self.strict_privacy)
 
         val_str = json.dumps(clean_val)
         now = datetime.now(UTC).isoformat()
@@ -721,13 +726,16 @@ class MemoryManager:
         """Store an automated workflow recipe."""
         clean_desc = sanitize_memory_content(description, strict=self.strict_privacy)
         clean_meta = sanitize_memory_metadata(metadata or {}, strict=self.strict_privacy)
+        # Workflow steps commonly carry command/argument strings that can embed
+        # secrets; scrub the whole steps structure before persistence.
+        clean_steps = sanitize_json_value(steps, strict=self.strict_privacy)
         now = datetime.now(UTC).isoformat()
 
         wf = WorkflowMemory(
             id=str(uuid4()),
             name=name.strip(),
             trigger=trigger.strip(),
-            steps=steps,
+            steps=clean_steps,
             description=clean_desc,
             metadata=clean_meta,
             created_at=now,
