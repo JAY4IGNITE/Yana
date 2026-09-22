@@ -74,6 +74,7 @@ def _host_is_internal(host: str, resolve: bool = False) -> bool:
             logger.debug("Could not resolve host '%s' for SSRF pre-check.", host)
     return False
 
+
 # Injected prompt phrases attempting to manipulate agent instructions or permissions
 PROMPT_INJECTION_PATTERNS = [
     re.compile(r"ignore\s+(all\s+)?previous\s+instructions", re.IGNORECASE),

@@ -49,9 +49,9 @@ class CartesiaTTSProvider(TextToSpeechProvider):
         self.voice_id = voice_id or settings.cartesia_voice_id
         self.model = model or settings.cartesia_model or "sonic-2"
         self.version = version or settings.cartesia_version or "2024-11-13"
-        self.base_url = (base_url or settings.cartesia_base_url or "https://api.cartesia.ai").rstrip(
-            "/"
-        )
+        self.base_url = (
+            base_url or settings.cartesia_base_url or "https://api.cartesia.ai"
+        ).rstrip("/")
 
     def is_available(self) -> bool:
         """Cartesia needs both an API key and a target voice to synthesize."""
@@ -90,9 +90,7 @@ class CartesiaTTSProvider(TextToSpeechProvider):
         }
 
         try:
-            async with httpx.AsyncClient(
-                timeout=float(settings.tool_timeout_seconds)
-            ) as client:
+            async with httpx.AsyncClient(timeout=float(settings.tool_timeout_seconds)) as client:
                 res = await client.post(endpoint, headers=headers, json=payload)
 
             if res.status_code == 200:
@@ -112,9 +110,7 @@ class CartesiaTTSProvider(TextToSpeechProvider):
                 res.status_code,
                 res.text,
             )
-            raise TextToSpeechError(
-                f"Cartesia TTS returned error {res.status_code}: {res.text}"
-            )
+            raise TextToSpeechError(f"Cartesia TTS returned error {res.status_code}: {res.text}")
         except TextToSpeechError:
             raise
         except Exception as e:
@@ -140,9 +136,7 @@ class CartesiaTTSProvider(TextToSpeechProvider):
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.get(endpoint, headers=headers)
             if res.status_code != 200:
-                logger.warning(
-                    "Failed to list Cartesia voices (%d): %s", res.status_code, res.text
-                )
+                logger.warning("Failed to list Cartesia voices (%d): %s", res.status_code, res.text)
                 return []
             body = res.json()
             voices = body if isinstance(body, list) else body.get("data", [])
