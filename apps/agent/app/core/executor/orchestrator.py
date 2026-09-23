@@ -31,6 +31,7 @@ from app.logger import logger, task_logger
 from app.permissions.manager import PermissionManager, permission_manager
 from app.protocol.models import (
     BaseProtocolModel,
+    PermissionRequest,
     RiskLevel,
     SafeErrorPayload,
     Task,
@@ -82,6 +83,10 @@ class AgentOrchestrator:
         )
         # Event handles for pause/resume coordination
         self._pause_events: dict[str, asyncio.Event] = {}
+        # task_id -> the consent id a task is currently blocked on (if any), so a
+        # cancel can unblock the specific consent waiter. Consent events are keyed
+        # on step_id, but cancel_task only knows the task_id, so we bridge here.
+        self._pending_consent: dict[str, str] = {}
 
     @staticmethod
     def _default_planner() -> BasePlanner:
@@ -142,6 +147,12 @@ class AgentOrchestrator:
         evt = self._pause_events.get(task_id)
         if evt:
             evt.set()  # Unblock any waiting pause loops
+        # If the task is blocked awaiting consent, wake that waiter too. It records
+        # no grant, so wait_for_consent returns False and the post-wake cancel check
+        # routes the task through _handle_cancelled cleanly.
+        pending_consent_id = self._pending_consent.get(task_id)
+        if pending_consent_id is not None:
+            self.permissions.cancel_consent_wait(pending_consent_id)
         cancelled = self.task_manager.cancel_task(task_id, reason)
         if on_event:
             await on_event(cancelled)
@@ -308,22 +319,56 @@ class AgentOrchestrator:
                     settings.permission_mode == "strict" or getattr(step, "is_checkpoint", False)
                 ):
                     if not self.permissions.is_approved(step.step_id):
+                        # Surface a real permission prompt to the UI and BLOCK the
+                        # task until the user answers (or the fail-closed timeout
+                        # elapses). The consent id is step.step_id — the same id the
+                        # execution pipeline authorizes against (see the ToolCall
+                        # construction below), so a grant recorded here authorizes
+                        # exactly this step's execution and nothing else.
                         self.task_manager.update_step_status(
-                            tid, step_num, TaskStatusEnum.WAITING_CONFIRMATION, is_checkpoint=True
+                            tid, step_num, TaskStatusEnum.WAITING_PERMISSION, is_checkpoint=True
                         )
+                        if on_event:
+                            await on_event(
+                                PermissionRequest(
+                                    task_id=tid,
+                                    tool_call_id=step.step_id,
+                                    tool=step.tool_name,
+                                    risk_level=tool.risk_level,
+                                    description=step.description,
+                                    arguments=step.arguments,
+                                )
+                            )
                         await emit_status(
-                            TaskStatusEnum.WAITING_CONFIRMATION,
-                            f"Confirmation required: {step.tool_name} ({tool.risk_level.value})",
+                            TaskStatusEnum.WAITING_PERMISSION,
+                            f"Permission required: {step.tool_name} ({tool.risk_level.value})",
                             progress=step_progress,
                             step=step_num,
                             total=total_steps,
                         )
+
+                        # Record which consent id this task is blocked on so a
+                        # concurrent cancel_task can wake this exact waiter.
+                        self._pending_consent[tid] = step.step_id
                         try:
-                            self.permissions.enforce_permission(tool, step.step_id, step.arguments)
-                        except PermissionError as pe:
+                            granted = await self.permissions.wait_for_consent(step.step_id)
+                        finally:
+                            self._pending_consent.pop(tid, None)
+
+                        # A cancel while waiting sets the event; re-check so we exit
+                        # cleanly instead of running a tool the user cancelled.
+                        if self.task_manager.is_cancelled(tid):
+                            self.permissions.clear_consent(step.step_id)
+                            return await self._handle_cancelled(tid, on_event)
+
+                        if not granted:
                             err = SafeErrorPayload(
                                 code=ErrorCode.PERMISSION_ERROR,
-                                message=str(pe),
+                                message=(
+                                    f"Permission denied for '{step.tool_name}' "
+                                    f"(Risk: {tool.risk_level.value}): user did not grant "
+                                    "consent for this action."
+                                ),
                                 task_id=tid,
                             )
                             self.task_manager.fail_task(tid, err)
@@ -352,7 +397,12 @@ class AgentOrchestrator:
                         total=total_steps,
                     )
 
+                    # Key the ToolCall on step_id so the pipeline's consuming gate
+                    # (authorize(tool_call.id, consume=True)) authorizes against the
+                    # same id the checkpoint recorded consent under. Without this the
+                    # pipeline mints a fresh uuid and the grant can never match.
                     tool_call = ToolCall(
+                        id=step.step_id,
                         task_id=tid,
                         tool=step.tool_name,
                         risk_level=tool.risk_level,
@@ -605,6 +655,7 @@ class AgentOrchestrator:
 
         finally:
             self._pause_events.pop(tid, None)
+            self._pending_consent.pop(tid, None)
 
     async def _handle_cancelled(self, tid: str, on_event: EventCallback | None) -> Task:
         """Cleanly mark task as cancelled and emit cancellation event."""

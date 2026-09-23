@@ -7,6 +7,7 @@ import {
   TaskCompleted,
   TaskStatus,
   TaskStepPayload,
+  PermissionRequest,
   PermissionResult,
   SafeErrorPayload,
 } from "@yana/protocol";
@@ -387,6 +388,11 @@ export class AgentClient {
               callbacks.onStatus(data);
             } else if (data.type === "task_step" && callbacks.onStep) {
               callbacks.onStep(data);
+            } else if (data.type === "permission_request" && callbacks.onPermissionRequest) {
+              // A HIGH/CRITICAL step is now blocked awaiting the user's decision.
+              // The task resumes on the same SSE stream once consent is POSTed to
+              // /permissions/consent (see submitConsent).
+              callbacks.onPermissionRequest(data);
             } else if (data.type === "task_completed" && callbacks.onCompleted) {
               callbacks.onCompleted(data);
             } else if (data.type === "task_cancelled" && callbacks.onCancelled) {
@@ -788,6 +794,12 @@ export interface PlanResponse {
 export interface AgentTaskCallbacks {
   onStatus?: (status: TaskStatus) => void;
   onStep?: (step: TaskStepPayload) => void;
+  /**
+   * Fired when a HIGH/CRITICAL step pauses the task to request consent. The task
+   * stays blocked on the server until submitConsent() posts a decision under the
+   * same toolCallId; remaining events then continue on this same stream.
+   */
+  onPermissionRequest?: (request: PermissionRequest) => void;
   onCompleted?: (completed: TaskCompleted) => void;
   onCancelled?: (cancelled: TaskCancelled) => void;
   onError?: (error: SafeErrorPayload) => void;

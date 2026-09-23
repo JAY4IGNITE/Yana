@@ -66,6 +66,9 @@ export function useProtocol() {
   const [currentTaskStatus, setCurrentTaskStatus] = useState<TaskStatus | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<ActiveTaskState | null>(null);
+  // Chat vs. Agent routing. Fail-safe default is "chat" so casual input can never
+  // silently launch tools — the user must opt into agentic execution.
+  const [agentMode, setAgentMode] = useState<"chat" | "agent">("chat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationListOpen, setConversationListOpen] = useState(false);
 
@@ -258,6 +261,14 @@ export function useProtocol() {
                   stepDescription: step.description,
                 };
               });
+            },
+            onPermissionRequest: (req: PermissionRequest) => {
+              // Open the consent modal mid-task. The task is blocked server-side
+              // on req.toolCallId; handleGrantPermission/handleDenyPermission post
+              // the decision and the SAME stream resumes.
+              setPendingPermission(req);
+              setPetState("listening");
+              setPetMood("curious");
             },
             onCompleted: (done: TaskCompleted) => {
               setActiveTask((prev) =>
@@ -881,86 +892,20 @@ export function useProtocol() {
 
   const handleGrantPermission = async (toolCallId: string) => {
     if (!pendingPermission) return;
+    const tool = pendingPermission.tool;
+    // Close the modal and hand the decision to the orchestrator. The task is
+    // BLOCKED server-side awaiting this exact toolCallId; posting consent wakes
+    // it and the remaining task_step/task_completed events continue to arrive on
+    // the SAME SSE stream opened by handleRunAgentTask — no one-shot executeTool.
     setPendingPermission(null);
     setPetState("executing");
-    setActiveToolName(pendingPermission.tool);
-
-    setCurrentTaskStatus({
-      version: "1.0.0",
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      type: "task_status",
-      taskId: pendingPermission.taskId,
-      status: "running",
-      message: `Executing ${pendingPermission.tool}...`,
-      progress: 0.5,
-    });
+    setActiveToolName(tool);
 
     try {
-      if (agentConnected) {
-        await agentClient.submitConsent(toolCallId, true);
-        const execRes = await agentClient.executeTool({
-          version: "1.0.0",
-          id: toolCallId,
-          timestamp: new Date().toISOString(),
-          type: "tool_call",
-          taskId: pendingPermission.taskId,
-          tool: pendingPermission.tool,
-          riskLevel: pendingPermission.riskLevel,
-          arguments: pendingPermission.arguments,
-        });
-
-        setCurrentTaskStatus({
-          version: "1.0.0",
-          id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-          type: "task_status",
-          taskId: pendingPermission.taskId,
-          status: "completed",
-          message: "Action verified and executed successfully.",
-          progress: 1.0,
-        });
-        setPetState("success");
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            conversationId: currentConversationId,
-            role: "assistant",
-            content: `Tool '${pendingPermission.tool}' executed successfully. Output: ${JSON.stringify(
-              execRes.tool_result.output
-            )}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-      } else {
-        setTimeout(() => {
-          setCurrentTaskStatus({
-            version: "1.0.0",
-            id: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-            type: "task_status",
-            taskId: pendingPermission.taskId,
-            status: "completed",
-            message: "Simulation complete.",
-            progress: 1.0,
-          });
-          setPetState("success");
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              conversationId: currentConversationId,
-              role: "assistant",
-              content: `Simulated execution of ${pendingPermission.tool} complete.`,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
-        }, 800);
-      }
+      await agentClient.submitConsent(toolCallId, true);
     } catch (err: unknown) {
       setPetState("error");
-      const errMsg = err instanceof Error ? err.message : "Tool execution failed";
+      const errMsg = err instanceof Error ? err.message : "Failed to submit consent";
       setMessages((prev) => [
         ...prev,
         {
@@ -971,7 +916,6 @@ export function useProtocol() {
           timestamp: new Date().toISOString(),
         },
       ]);
-    } finally {
       setTimeout(() => {
         setActiveToolName(null);
         setPetState("idle");
@@ -982,19 +926,9 @@ export function useProtocol() {
   const handleDenyPermission = async (toolCallId: string, reason: string) => {
     setPendingPermission(null);
     setPetState("error");
-    if (agentConnected) {
-      await agentClient.submitConsent(toolCallId, false, reason).catch(() => {});
-    }
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        conversationId: currentConversationId,
-        role: "error",
-        content: `Permission denied: ${reason}`,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
+    // Denial is also just a consent decision: the waiting task fails the step
+    // cleanly and streams its own failure event. No local status faking.
+    await agentClient.submitConsent(toolCallId, false, reason).catch(() => {});
     setTimeout(() => setPetState("idle"), 2500);
   };
 
@@ -1069,6 +1003,8 @@ export function useProtocol() {
     handleRunAgentTask,
     handleCancelActiveTask,
     handleDismissActiveTask,
+    agentMode,
+    setAgentMode,
     microphones,
     speakers,
     selectedMicId,

@@ -497,7 +497,9 @@ async def test_task_cooperative_cancellation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirmation_checkpoint_enforcement() -> None:
+async def test_confirmation_checkpoint_enforcement(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.permissions.manager
+    monkeypatch.setattr(app.permissions.manager, "DEFAULT_CONSENT_TIMEOUT_SECONDS", 0.01)
     class HighRiskCheckpointTool(BaseTool):
         name = "sim.checkpoint"
         category = "security"

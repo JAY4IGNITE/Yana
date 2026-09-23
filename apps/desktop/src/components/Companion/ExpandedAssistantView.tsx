@@ -38,6 +38,11 @@ interface ExpandedAssistantViewProps {
   onCollapse: () => void;
   onToggleAlwaysOnTop: () => void;
   onSendMessage: (text: string) => void;
+  /** Launch an autonomous agent task (plan → tool → verify) instead of plain chat. */
+  onRunTask?: (goal: string) => void;
+  /** Current routing mode; "agent" sends input to onRunTask, "chat" to onSendMessage. */
+  agentMode?: "chat" | "agent";
+  onAgentModeChange?: (mode: "chat" | "agent") => void;
   onToggleListening: () => void;
   onStop: () => void;
   onRetry?: () => void;
@@ -64,6 +69,9 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
   onCollapse,
   onToggleAlwaysOnTop,
   onSendMessage,
+  onRunTask,
+  agentMode = "chat",
+  onAgentModeChange,
   onToggleListening,
   onStop,
   onRetry,
@@ -92,7 +100,14 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isGenerating) return;
-    onSendMessage(input.trim());
+    const text = input.trim();
+    // Route by explicit mode: agentic tasks go through the plan→tool→verify loop
+    // (which can pause for consent); chat goes straight to the LLM.
+    if (agentMode === "agent" && onRunTask) {
+      onRunTask(text);
+    } else {
+      onSendMessage(text);
+    }
     setInput("");
   };
 

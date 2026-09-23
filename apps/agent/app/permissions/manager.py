@@ -5,12 +5,17 @@ Follows the rule: AI requests a tool -> passes through validation and permission
 -> only then may the executor perform the operation.
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
 from app.errors import PermissionError
 from app.protocol.models import RiskLevel
 from app.tools.base import BaseTool
+
+# Fail-closed default: a consent prompt that is never answered auto-denies after
+# this many seconds so an autonomous task can't hang forever waiting on the user.
+DEFAULT_CONSENT_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass
@@ -27,19 +32,80 @@ class PermissionManager:
         self.mode = mode
         # Map of tool_call_id -> granted (bool)
         self._user_consents: dict[str, bool] = {}
+        # Map of tool_call_id -> asyncio.Event, signalled when a decision for that
+        # id arrives (grant, deny, or cancel), so a task awaiting consent wakes up.
+        # Mirrors AgentOrchestrator._pause_events.
+        self._consent_events: dict[str, asyncio.Event] = {}
+
+    def _consent_event(self, tool_call_id: str) -> asyncio.Event:
+        """Get or lazily create the wakeup event for a pending consent id."""
+        evt = self._consent_events.get(tool_call_id)
+        if evt is None:
+            evt = asyncio.Event()
+            self._consent_events[tool_call_id] = evt
+        return evt
 
     def set_consent(self, tool_call_id: str, granted: bool) -> None:
-        """Record explicit user decision for a pending tool call.
+        """Record explicit user decision for a pending tool call and wake any waiter.
 
         Consent is SINGLE-USE: it is consumed by the next successful
         authorization for this id (see ``authorize``), so a one-time approval
         cannot be replayed to authorize an unbounded number of later actions.
+
+        Signalling the event lets a task blocked in ``wait_for_consent`` resume
+        the instant a decision is POSTed to ``/permissions/consent``.
         """
         self._user_consents[tool_call_id] = granted
+        self._consent_event(tool_call_id).set()
 
     def is_approved(self, tool_call_id: str) -> bool:
         """Check whether explicit user consent is currently recorded (non-consuming)."""
         return self._user_consents.get(tool_call_id, False)
+
+    async def wait_for_consent(
+        self,
+        tool_call_id: str,
+        timeout: float = DEFAULT_CONSENT_TIMEOUT_SECONDS,
+    ) -> bool:
+        """Block until a decision for ``tool_call_id`` arrives, then return it.
+
+        Returns the recorded grant/deny WITHOUT consuming it — the real execution
+        gate (``ExecutionPipeline`` via ``authorize(consume=True)``) consumes it
+        exactly once. Fail-closed: on timeout the id is recorded as denied and
+        ``False`` is returned, so an unanswered prompt never authorizes an action.
+
+        If a decision was already recorded before this is called (e.g. the user
+        answered very quickly), it returns immediately.
+        """
+        # Fast path: decision already recorded.
+        if tool_call_id in self._user_consents:
+            return self._user_consents[tool_call_id]
+
+        evt = self._consent_event(tool_call_id)
+        try:
+            await asyncio.wait_for(evt.wait(), timeout=timeout)
+        except (TimeoutError, asyncio.TimeoutError):
+            # Fail-closed: no answer in time -> deny.
+            self._user_consents[tool_call_id] = False
+            return False
+        # Woken by set_consent or cancel_consent_wait; return recorded decision
+        # (defaults to denied if the wakeup carried no grant, e.g. cancellation).
+        return self._user_consents.get(tool_call_id, False)
+
+    def cancel_consent_wait(self, tool_call_id: str) -> None:
+        """Unblock a task waiting on this id without granting it (used on cancel).
+
+        Wakes the waiter so it re-checks task cancellation and exits; because no
+        grant is recorded, ``wait_for_consent`` returns ``False`` (denied).
+        """
+        evt = self._consent_events.get(tool_call_id)
+        if evt is not None:
+            evt.set()
+
+    def clear_consent(self, tool_call_id: str) -> None:
+        """Drop any recorded decision and wakeup event for an id (post-resolution cleanup)."""
+        self._user_consents.pop(tool_call_id, None)
+        self._consent_events.pop(tool_call_id, None)
 
     def authorize(
         self,
