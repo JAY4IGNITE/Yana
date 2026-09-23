@@ -76,6 +76,7 @@ class AgentSettings(BaseSettings):
     # 🎤 Voice & Audio Subsystem
     stt_provider: str = "nvidia_parakeet"
     stt_model: str = "nvidia/parakeet-ctc-1.1b-asr"
+    stt_api_key: SecretStr = Field(default=SecretStr(""))
     tts_provider: str = "edge_tts"
     tts_voice: str = "en-US-AriaNeural"
 
@@ -89,7 +90,7 @@ class AgentSettings(BaseSettings):
     cartesia_base_url: str = "https://api.cartesia.ai"
 
     # Security & Policy
-    permission_mode: Literal["strict", "permissive"] = "strict"
+    permission_mode: Literal["strict", "permissive", "god"] = "strict"
     max_execution_loops: int = 10
     tool_timeout_seconds: int = 90
 
@@ -117,6 +118,14 @@ class AgentSettings(BaseSettings):
             data["ai_api_key"] = "********"
         else:
             data["ai_api_key"] = ""
+        if self.ai_heavy_api_key.get_secret_value():
+            data["ai_heavy_api_key"] = "********"
+        else:
+            data["ai_heavy_api_key"] = ""
+        if self.stt_api_key.get_secret_value():
+            data["stt_api_key"] = "********"
+        else:
+            data["stt_api_key"] = ""
         if self.cartesia_api_key.get_secret_value():
             data["cartesia_api_key"] = "********"
         else:

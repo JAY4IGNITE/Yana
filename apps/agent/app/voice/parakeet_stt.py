@@ -21,6 +21,7 @@ class NvidiaParakeetSTTProvider(SpeechToTextProvider):
     ) -> None:
         self.api_key = (
             api_key
+            or settings.stt_api_key.get_secret_value()
             or settings.ai_heavy_api_key.get_secret_value()
             or settings.ai_api_key.get_secret_value()
         )

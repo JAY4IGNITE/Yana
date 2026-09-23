@@ -26,7 +26,7 @@ from app.core.planner.base import BasePlanner, LLMPlanner, RuleBasedPlanner
 from app.core.task_manager import TaskManager
 from app.core.task_manager import task_manager as global_task_manager
 from app.core.telemetry.tracer import task_tracer
-from app.errors import ErrorCode, PermissionError, ValidationError
+from app.errors import ErrorCode, ValidationError
 from app.logger import logger, task_logger
 from app.permissions.manager import PermissionManager, permission_manager
 from app.protocol.models import (
@@ -217,9 +217,37 @@ class AgentOrchestrator:
             if await check_pause_and_cancel():
                 return await self._handle_cancelled(tid, on_event)
 
+            planner_to_use = self.planner
+
+            # System 1 Intercept
+            try:
+                from app.core.executor.router import system1_router
+                intent_res = system1_router.analyze(goal)
+                logger.info(f"System 1 Routing: {intent_res}")
+
+                if (
+                    intent_res["intent"] == "system_command"
+                    and intent_res["intent_confidence"] > 0.85
+                ):
+                    from app.core.planner.base import RuleBasedPlanner
+                    planner_to_use = RuleBasedPlanner()
+                    logger.info("Fast-pathing system command to RuleBasedPlanner via Laya.")
+                elif intent_res["intent"] == "harmful" and intent_res["intent_confidence"] > 0.90:
+                    err = SafeErrorPayload(
+                        code=ErrorCode.PERMISSION_ERROR,
+                        message="Task blocked by System 1 safety guardrails.",
+                        task_id=tid,
+                        retryable=False,
+                    )
+                    self.task_manager.fail_task(tid, err)
+                    await emit_status(TaskStatusEnum.FAILED, err.message, progress=0.0)
+                    return self.task_manager.get_task(tid)
+            except Exception as e:
+                logger.warning(f"System 1 routing skipped: {e}")
+
             try:
                 available_tools = self.registry.list_tools()
-                plan = await self.planner.create_plan(goal, available_tools, task_id=tid)
+                plan = await planner_to_use.create_plan(goal, available_tools, task_id=tid)
 
                 if len(plan.steps) > self.max_steps:
                     raise ValidationError(

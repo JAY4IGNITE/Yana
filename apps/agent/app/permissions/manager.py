@@ -84,7 +84,7 @@ class PermissionManager:
         evt = self._consent_event(tool_call_id)
         try:
             await asyncio.wait_for(evt.wait(), timeout=timeout)
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             # Fail-closed: no answer in time -> deny.
             self._user_consents[tool_call_id] = False
             return False
@@ -151,6 +151,16 @@ class PermissionManager:
                     f"Action '{tool.name}' originates from untrusted external content. "
                     "Explicit user confirmation is strictly required."
                 ),
+            )
+
+        # God mode: Bypass all permission checks, granting entire access automatically
+        if self.mode == "god":
+            if consume and tool_call_id in self._user_consents:
+                self._user_consents.pop(tool_call_id, None)
+            return PermissionDecision(
+                requires_prompt=False,
+                granted=True,
+                reason="God mode enabled. Entire access granted.",
             )
 
         # SAFE risk tools are always permitted without confirmation

@@ -20,6 +20,7 @@ dependencies = [
     "edge-tts>=6.1.12",
     "numpy>=1.26.0",
     "asyncpg>=0.30.0",
+    "laya>=0.3.10",
 ]
 
 [project.optional-dependencies]
