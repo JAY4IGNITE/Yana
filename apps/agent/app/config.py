@@ -79,6 +79,15 @@ class AgentSettings(BaseSettings):
     tts_provider: str = "edge_tts"
     tts_voice: str = "en-US-AriaNeural"
 
+    # 🗣️ Cartesia (Sonic) TTS — speak in a custom/cloned voice.
+    # Activated by setting tts_provider="cartesia". model/version are env-overridable
+    # because Cartesia revises them periodically.
+    cartesia_api_key: SecretStr = Field(default=SecretStr(""))
+    cartesia_voice_id: str = ""
+    cartesia_model: str = "sonic-2"
+    cartesia_version: str = "2024-11-13"
+    cartesia_base_url: str = "https://api.cartesia.ai"
+
     # Security & Policy
     permission_mode: Literal["strict", "permissive"] = "strict"
     max_execution_loops: int = 10
@@ -108,6 +117,10 @@ class AgentSettings(BaseSettings):
             data["ai_api_key"] = "********"
         else:
             data["ai_api_key"] = ""
+        if self.cartesia_api_key.get_secret_value():
+            data["cartesia_api_key"] = "********"
+        else:
+            data["cartesia_api_key"] = ""
         # Convert Path to str
         data["storage_path"] = str(self.storage_path)
         return data

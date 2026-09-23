@@ -216,9 +216,7 @@ class TieredAIRouter(AIProvider):
             if not first_token_received:
                 # Failed before any token: try a real backup tier (heavy).
                 backup_provider = (
-                    self._heavy_provider
-                    if primary_provider != self._heavy_provider
-                    else None
+                    self._heavy_provider if primary_provider != self._heavy_provider else None
                 )
                 if backup_provider:
                     logger.info("TieredAIRouter: Retrying stream with backup provider...")

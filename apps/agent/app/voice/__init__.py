@@ -10,6 +10,7 @@ from app.voice.base import (
     VoiceState,
     WakeWordProvider,
 )
+from app.voice.cartesia_tts import CartesiaTTSProvider
 from app.voice.device_manager import AudioDeviceManager
 from app.voice.edge_tts_provider import NaturalEdgeTTSProvider
 from app.voice.mock_providers import (
@@ -30,11 +31,13 @@ def create_voice_pipeline() -> VoicePipeline:
         if settings.stt_provider == "nvidia_parakeet"
         else MockSpeechToTextProvider()
     )
-    tts = (
-        NaturalEdgeTTSProvider()
-        if settings.tts_provider == "edge_tts"
-        else MockTextToSpeechProvider()
-    )
+    tts: TextToSpeechProvider
+    if settings.tts_provider == "cartesia":
+        tts = CartesiaTTSProvider()
+    elif settings.tts_provider == "edge_tts":
+        tts = NaturalEdgeTTSProvider()
+    else:
+        tts = MockTextToSpeechProvider()
     return VoicePipeline(stt_provider=stt, tts_provider=tts)
 
 
@@ -45,6 +48,7 @@ __all__ = [
     "AudioDevice",
     "AudioDeviceManager",
     "AudioDeviceType",
+    "CartesiaTTSProvider",
     "MockSpeechToTextProvider",
     "MockTextToSpeechProvider",
     "MockVoiceActivityDetector",

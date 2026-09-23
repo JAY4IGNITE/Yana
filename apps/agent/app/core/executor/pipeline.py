@@ -77,9 +77,7 @@ class ExecutionPipeline:
 
         # Step 2: Permission Manager authorization check. This is the real
         # execution gate, so any recorded consent is consumed (single-use).
-        decision = self.permissions.authorize(
-            tool, tool_call.id, tool_call.arguments, consume=True
-        )
+        decision = self.permissions.authorize(tool, tool_call.id, tool_call.arguments, consume=True)
         if not decision.granted:
             err_payload = SafeErrorPayload(
                 code=ErrorCode.PERMISSION_ERROR,
