@@ -23,6 +23,7 @@ from app.errors import ErrorCode, YanaBaseError
 from app.logger import logger
 from app.memory.db import db_manager
 from app.tools import register_default_tools
+from app.tools.browser.session import browser_session
 
 
 @asynccontextmanager
@@ -41,8 +42,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     duration = time.perf_counter() - start_time
     performance_monitor.record_startup_time(duration)
     logger.info(f"YANA Agent startup complete in {duration:.4f}s.")
-    yield
-    logger.info("Shutting down YANA Agent services...")
+    try:
+        yield
+    finally:
+        logger.info("Shutting down YANA Agent services...")
+        await browser_session.close_session()
 
 
 app = FastAPI(
@@ -61,10 +65,26 @@ def get_cors_origins(env: str | None = None) -> list[str]:
     target_env = env or settings.env
     if target_env == "production":
         return ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"]
-    return ["*"]
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ]
 
 
 allowed_origins = get_cors_origins()
+
+
+@app.middleware("http")
+async def restrict_browser_origins(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if origin and origin not in allowed_origins:
+        return JSONResponse(status_code=403, content={"error": "Untrusted browser origin."})
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -114,9 +134,9 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "app.main:app",
+        app,
         host=settings.agent_host,
         port=settings.agent_port,
         log_level=settings.agent_log_level.lower(),
-        reload=settings.debug,
+        reload=False,
     )

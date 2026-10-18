@@ -32,6 +32,7 @@ interface ExpandedAssistantViewProps {
   isGenerating?: boolean;
   alwaysOnTop: boolean;
   agentConnected: boolean;
+  aiWarning?: string | null;
   activeTask?: ActiveTaskState | null;
   onCancelTask?: () => void;
   onDismissTask?: () => void;
@@ -63,6 +64,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
   isGenerating = false,
   alwaysOnTop,
   agentConnected,
+  aiWarning,
   activeTask,
   onCancelTask,
   onDismissTask,
@@ -84,6 +86,8 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taskRunning = !!activeTask && !["completed", "failed", "cancelled"].includes(activeTask.status);
+  const busy = isGenerating || taskRunning;
 
   // Auto-focus input when opened
   useEffect(() => {
@@ -99,7 +103,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isGenerating) return;
+    if (!input.trim() || busy) return;
     const text = input.trim();
     // Route by explicit mode: agentic tasks go through the plan→tool→verify loop
     // (which can pause for consent); chat goes straight to the LLM.
@@ -112,7 +116,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
   };
 
   const getStatusText = () => {
-    if (!agentConnected) return "Offline (Simulation)";
+    if (!agentConnected) return "Agent disconnected";
     if (isListening) return "Listening...";
     if (isGenerating && isSpeaking) return "Streaming Response...";
     if (isGenerating) return "Thinking...";
@@ -134,7 +138,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
         <div className="flex items-center space-x-2">
           <span className="text-xs font-bold tracking-wider text-slate-100">YANA</span>
           <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-sky-400 font-mono border border-slate-700/50">
-            v0.2.0
+            v0.1.0
           </span>
         </div>
 
@@ -313,8 +317,11 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
       </div>
 
       {/* Autonomous Agent Task Card */}
+      {aiWarning && <div role="status" className="px-3 py-2 text-xs text-amber-200 bg-amber-950/40">{aiWarning}</div>}
+      {/* Task results and messages share the scroll area so controls stay on-screen. */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3">
       {activeTask && (
-        <div className="px-3 pt-2 flex-shrink-0">
+        <div>
           <TaskProgressCard
             task={activeTask}
             onCancel={onCancelTask}
@@ -324,10 +331,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
       )}
 
       {/* Conversation Area */}
-      <div
-        ref={scrollRef}
-        className="flex-1 p-3.5 overflow-y-auto space-y-3 min-h-[140px]"
-      >
+      <div className="space-y-3">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
             <p className="text-sm font-semibold text-slate-200">How can I help you today?</p>
@@ -402,8 +406,21 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
           })
         )}
       </div>
+      </div>
 
       {/* Input & Controls Bottom Bar */}
+      {onAgentModeChange && (
+        <div className="shrink-0 px-3 py-2 bg-slate-900 text-xs text-slate-300 flex items-center gap-2">
+          <label htmlFor="assistant-mode">Assistant mode</label>
+          <select id="assistant-mode" value={agentMode} disabled={busy || isListening}
+            onChange={(event) => onAgentModeChange(event.target.value as "chat" | "agent")}
+            className="bg-slate-800 rounded px-2 py-1 border border-slate-700">
+            <option value="chat">Chat</option>
+            <option value="agent">Control my PC</option>
+          </select>
+          <span className="text-slate-400">{agentMode === "agent" ? "Runs tools with permission checks" : "Questions and conversation"}</span>
+        </div>
+      )}
       <form
         onSubmit={handleSubmit}
         className="p-2.5 bg-slate-900/90 border-t border-slate-800/80 flex items-center space-x-2 flex-shrink-0"
@@ -414,7 +431,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={isGenerating ? "YANA is responding..." : "Ask YANA..."}
-          disabled={isGenerating}
+          disabled={busy}
           className="flex-1 bg-slate-950/90 border border-slate-800 focus:border-sky-500/60 focus:outline-none focus:ring-1 focus:ring-sky-500/30 text-slate-200 placeholder-slate-500 text-xs rounded-xl px-3 py-2 transition disabled:opacity-60"
         />
 
@@ -422,7 +439,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
         <button
           type="button"
           onClick={onToggleListening}
-          disabled={isGenerating}
+          disabled={busy}
           className={`p-2 rounded-xl border transition flex items-center justify-center ${
             isListening
               ? "bg-sky-500 text-slate-950 border-sky-400 animate-pulse"
@@ -450,7 +467,7 @@ export const ExpandedAssistantView: React.FC<ExpandedAssistantViewProps> = ({
         {/* Send Button */}
         <button
           type="submit"
-          disabled={!input.trim() || isGenerating}
+          disabled={!input.trim() || busy}
           className="p-2 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:hover:bg-sky-500 text-slate-950 transition flex items-center justify-center font-medium"
           title="Send command"
           aria-label="Send Message"

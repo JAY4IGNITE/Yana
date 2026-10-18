@@ -25,9 +25,7 @@ class NvidiaParakeetSTTProvider(SpeechToTextProvider):
             or settings.ai_heavy_api_key.get_secret_value()
             or settings.ai_api_key.get_secret_value()
         )
-        self.base_url = (
-            base_url or settings.ai_heavy_base_url or "https://integrate.api.nvidia.com/v1"
-        )
+        self.base_url = base_url or settings.stt_base_url
         self.model = model or settings.stt_model or "nvidia/parakeet-ctc-1.1b-asr"
 
     def is_available(self) -> bool:
@@ -37,7 +35,7 @@ class NvidiaParakeetSTTProvider(SpeechToTextProvider):
         self,
         audio_data: bytes,
         sample_rate: int = 16000,
-        language: str = "en",
+        language: str = "en-US",
     ) -> str:
         """Transcribe PCM/WAV audio bytes into text via NVIDIA ASR API."""
         if not audio_data:

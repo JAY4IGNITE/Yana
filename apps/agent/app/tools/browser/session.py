@@ -4,6 +4,8 @@ Manages lifecycle of Playwright driver, Chromium browser instance, browser conte
 active tabs/pages, and sandboxed download paths.
 """
 
+import asyncio
+import sys
 from pathlib import Path
 
 from playwright.async_api import (
@@ -13,7 +15,11 @@ from playwright.async_api import (
     Playwright,
     async_playwright,
 )
+from playwright.async_api import (
+    Error as PlaywrightError,
+)
 
+from app.errors import ConfigurationError
 from app.logger import logger
 from app.tools.browser.security import DownloadSandboxManager
 
@@ -29,6 +35,7 @@ class BrowserSessionManager:
         self._pages: list[Page] = []
         self._active_page_index: int = 0
         self._default_headless: bool = True
+        self._start_lock = asyncio.Lock()
 
     @property
     def is_running(self) -> bool:
@@ -37,31 +44,54 @@ class BrowserSessionManager:
 
     async def get_or_create_context(self, headless: bool | None = None) -> BrowserContext:
         """Initialize or retrieve the active Playwright browser context."""
-        use_headless = self._default_headless if headless is None else headless
+        async with self._start_lock:
+            use_headless = self._default_headless if headless is None else headless
+            if self._playwright is None:
+                self._playwright = await async_playwright().start()
 
-        if self._playwright is None:
-            self._playwright = await async_playwright().start()
+            if not self.is_running:
+                # A closed browser invalidates every context and page it owned.
+                self._context = None
+                self._pages.clear()
+                self._active_page_index = 0
+                self._browser = await self._launch_browser(use_headless)
 
-        if self._browser is None or not self._browser.is_connected():
-            logger.info("Launching Playwright Chromium (headless=%s)", use_headless)
-            self._browser = await self._playwright.chromium.launch(
-                headless=use_headless,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
+            if self._context is None:
+                self._context = await self._browser.new_context(
+                    accept_downloads=True,
+                    viewport={"width": 1280, "height": 800},
+                )
+                self._context.on("page", self._on_new_page)
+                self._context.on("close", self._on_context_closed)
 
-        if self._context is None:
-            self._context = await self._browser.new_context(
-                accept_downloads=True,
-                viewport={"width": 1280, "height": 800},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 YANA/0.7.0"
-                ),
-            )
-            # Route page events
-            self._context.on("page", self._on_new_page)
+            return self._context
 
-        return self._context
+    async def _launch_browser(self, headless: bool) -> Browser:
+        assert self._playwright is not None
+        # Installed apps may not have the developer's Playwright browser cache.
+        # Branded channels use a fresh automation profile, never the user's profile.
+        channels = [None, "msedge", "chrome"] if sys.platform == "win32" else [None]
+        for channel in channels:
+            try:
+                logger.info("Launching browser channel=%s (headless=%s)", channel, headless)
+                return await self._playwright.chromium.launch(headless=headless, channel=channel)
+            except PlaywrightError as error:
+                message = str(error).lower()
+                missing = "executable doesn't exist" in message or (
+                    "distribution" in message and "not found" in message
+                )
+                if not missing:
+                    raise
+        raise ConfigurationError(
+            "No supported automation browser is installed. Install Microsoft Edge or Google "
+            "Chrome on Windows, or run the project setup script to install Playwright Chromium."
+        )
+
+    def _on_context_closed(self, context: BrowserContext) -> None:
+        if context is self._context:
+            self._context = None
+            self._pages.clear()
+            self._active_page_index = 0
 
     def _on_new_page(self, page: Page) -> None:
         """Track new pages/popups opened within the context."""
@@ -78,8 +108,7 @@ class BrowserSessionManager:
 
         if not self._pages:
             page = await context.new_page()
-            self._pages.append(page)
-            self._active_page_index = 0
+            self._on_new_page(page)
             return page
 
         if self._active_page_index >= len(self._pages):

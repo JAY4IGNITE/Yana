@@ -44,7 +44,7 @@ impl Default for AgentSupervisor {
 impl AgentSupervisor {
     pub fn new() -> Self {
         Self {
-            state: SupervisorState::Running,
+            state: SupervisorState::Stopped,
             failure_timestamps: Vec::new(),
             last_restart: None,
             backoff_ms: INITIAL_BACKOFF_MS,
@@ -151,7 +151,10 @@ pub async fn get_agent_supervisor_status() -> Result<SupervisorStatus, SafeComma
 }
 
 #[tauri::command]
-pub async fn restart_agent_service() -> Result<SupervisorStatus, SafeCommandError> {
+pub async fn restart_agent_service(app: tauri::AppHandle) -> Result<SupervisorStatus, SafeCommandError> {
+    crate::agent_process::ensure_started(&app, true).await.map_err(|message| SafeCommandError {
+        code: crate::error::ErrorCode::SystemError, message,
+    })?;
     let supervisor_arc = get_global_supervisor();
     let mut supervisor = supervisor_arc.lock().await;
     let status = supervisor.reset();

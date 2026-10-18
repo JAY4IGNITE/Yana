@@ -30,7 +30,6 @@ from app.core.performance import performance_monitor
 from app.errors import (
     AIError,
     ConfigurationError,
-    ErrorCode,
     NetworkError,
     TimeoutError,
     ValidationError,
@@ -112,7 +111,6 @@ class OpenAICompatibleProvider(AIProvider):
             if not response.choices:
                 raise AIError(
                     "AI provider returned no completion choices.",
-                    code=ErrorCode.AI_ERROR,
                     retryable=True,
                 )
             choice = response.choices[0]
@@ -136,17 +134,14 @@ class OpenAICompatibleProvider(AIProvider):
         except AuthenticationError as e:
             raise ConfigurationError(
                 "Invalid AI API credentials. Please check your API key.",
-                code=ErrorCode.CONFIGURATION_ERROR,
             ) from e
         except PermissionDeniedError as e:
             raise ConfigurationError(
                 "AI provider authorization failed. Ensure your API key has required permissions.",
-                code=ErrorCode.CONFIGURATION_ERROR,
             ) from e
         except RateLimitError as e:
             raise AIError(
                 "AI rate limit exceeded. Please wait a moment before trying again.",
-                code=ErrorCode.AI_ERROR,
                 retryable=True,
             ) from e
         except APITimeoutError as e:
@@ -162,7 +157,6 @@ class OpenAICompatibleProvider(AIProvider):
         except APIError as e:
             raise AIError(
                 f"AI service returned an error: {e.message}",
-                code=ErrorCode.AI_ERROR,
             ) from e
 
     async def stream_message(
@@ -209,17 +203,14 @@ class OpenAICompatibleProvider(AIProvider):
         except AuthenticationError as e:
             raise ConfigurationError(
                 "Invalid AI API credentials. Please check your API key.",
-                code=ErrorCode.CONFIGURATION_ERROR,
             ) from e
         except PermissionDeniedError as e:
             raise ConfigurationError(
                 "AI provider authorization failed. Ensure your API key has required permissions.",
-                code=ErrorCode.CONFIGURATION_ERROR,
             ) from e
         except RateLimitError as e:
             raise AIError(
                 "AI rate limit exceeded. Please wait a moment before trying again.",
-                code=ErrorCode.AI_ERROR,
                 retryable=True,
             ) from e
         except APITimeoutError as e:
@@ -235,7 +226,6 @@ class OpenAICompatibleProvider(AIProvider):
         except APIError as e:
             raise AIError(
                 f"AI service error: {e.message}",
-                code=ErrorCode.AI_ERROR,
             ) from e
 
     async def cancel(self, session_id: str) -> None:

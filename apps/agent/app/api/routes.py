@@ -23,6 +23,13 @@ from app.tools import register_default_tools, registry
 
 router = APIRouter(prefix="/api")
 
+
+@router.get("/ready")
+async def readiness() -> dict[str, str]:
+    """Fast process readiness; does not depend on cloud or microphone availability."""
+    return {"service": "yana-agent", "status": "ready"}
+
+
 # Ensure default tools are loaded
 register_default_tools(registry)
 

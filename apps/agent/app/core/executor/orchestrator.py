@@ -221,8 +221,11 @@ class AgentOrchestrator:
 
             # System 1 Intercept
             try:
-                from app.core.executor.router import system1_router
-                intent_res = system1_router.analyze(goal)
+                intent_res = {"intent": "chat", "intent_confidence": 0.0}
+                if settings.intent_router_enabled:
+                    from app.core.executor.router import system1_router
+
+                    intent_res = await asyncio.to_thread(system1_router.analyze, goal)
                 logger.info(f"System 1 Routing: {intent_res}")
 
                 if (
@@ -230,6 +233,7 @@ class AgentOrchestrator:
                     and intent_res["intent_confidence"] > 0.85
                 ):
                     from app.core.planner.base import RuleBasedPlanner
+
                     planner_to_use = RuleBasedPlanner()
                     logger.info("Fast-pathing system command to RuleBasedPlanner via Laya.")
                 elif intent_res["intent"] == "harmful" and intent_res["intent_confidence"] > 0.90:

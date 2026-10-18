@@ -1,4 +1,5 @@
 pub mod agent_supervisor;
+pub mod agent_process;
 pub mod commands;
 pub mod error;
 pub mod protocol;
@@ -14,6 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            agent_process::supervise(app.handle().clone());
             // Build Native System Tray Menu
             let show_i = MenuItem::with_id(app, "show", "Open YANA", true, None::<&str>)?;
             let hide_i = MenuItem::with_id(app, "hide", "Hide YANA", true, None::<&str>)?;
@@ -26,6 +28,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
+                        agent_process::stop_owned();
                         app.exit(0);
                     }
                     "hide" => {
@@ -68,8 +71,8 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .build(app)?;
 
-            // Register Global Shortcut: Ctrl + Space
-            let shortcut: Shortcut = "Ctrl+Space".parse().unwrap();
+            // Register Global Shortcut: Ctrl + Shift + Space
+            let shortcut: Shortcut = "Ctrl+Shift+Space".parse().unwrap();
             let app_handle = app.handle().clone();
             let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
@@ -102,6 +105,9 @@ pub fn run() {
             agent_supervisor::restart_agent_service,
             agent_supervisor::report_agent_heartbeat,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) { agent_process::stop_owned(); }
+        });
 }

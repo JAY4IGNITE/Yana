@@ -9,6 +9,7 @@ Monitors 6 core subsystems:
 6. browser (browser automation and Playwright context readiness)
 """
 
+import asyncio
 import os
 import time
 from datetime import UTC, datetime
@@ -123,11 +124,16 @@ class HealthMonitor:
         try:
             provider = get_ai_provider()
             provider_type = type(provider).__name__
+            ready = await asyncio.wait_for(provider.health_check(), timeout=4.0)
             latency = round((time.perf_counter() - start_t) * 1000.0, 2)
 
             return SubsystemHealth(
-                status="healthy",
-                message=f"AI provider '{settings.ai_provider}' configured ({provider_type})",
+                status="healthy" if ready else "degraded",
+                message=(
+                    f"AI provider '{settings.ai_provider}' ready"
+                    if ready
+                    else "AI provider unavailable. Check the model, endpoint, and credentials."
+                ),
                 latency_ms=latency,
                 details={
                     "provider": settings.ai_provider,

@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.executor.orchestrator import agent_orchestrator
-from app.core.planner.base import Plan, RuleBasedPlanner
+from app.core.planner.base import Plan
 from app.core.task_manager import task_manager
 from app.protocol.models import (
     BaseProtocolModel,
@@ -41,7 +41,7 @@ class CancelTaskRequest(BaseModel):
 @router.post("/plan", response_model=dict[str, Any])
 async def plan_goal(req: PlanRequest) -> dict[str, Any]:
     """Formulate and validate an execution plan without running it."""
-    planner = RuleBasedPlanner()
+    planner = agent_orchestrator.planner
     available_tools = registry.list_tools()
     plan: Plan = await planner.create_plan(req.goal, available_tools)
     task_manager.create_task(goal=plan.goal, task_id=plan.task_id)

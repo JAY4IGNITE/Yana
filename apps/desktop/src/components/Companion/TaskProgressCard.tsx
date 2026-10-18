@@ -247,7 +247,7 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
               <div
                 key={stepId}
                 data-testid={`step-row-${stepNumber}`}
-                className="flex items-center justify-between text-[11px] py-1 px-1.5 rounded bg-slate-950/40 border border-slate-800/40"
+                className="flex flex-wrap items-center justify-between text-[11px] py-1 px-1.5 rounded bg-slate-950/40 border border-slate-800/40"
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   {/* Phase 11 Step Status Markers: ✓, ●, ○, ✗ */}
@@ -301,6 +301,14 @@ export const TaskProgressCard: React.FC<TaskProgressCardProps> = ({
                     </span>
                   )}
                 </div>
+                {step.output != null && (
+                  <details className="basis-full min-w-0 mt-2 text-slate-300">
+                    <summary className="cursor-pointer text-sky-300">View result for step {stepNumber}</summary>
+                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] select-text">
+                      {typeof step.output === "string" ? step.output : JSON.stringify(step.output, null, 2)}
+                    </pre>
+                  </details>
+                )}
               </div>
             );
           })}

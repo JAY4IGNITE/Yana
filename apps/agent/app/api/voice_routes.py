@@ -2,13 +2,30 @@
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.errors import YanaBaseError
 from app.voice import voice_pipeline
 
 router = APIRouter(prefix="/api/voice", tags=["Voice"])
+
+
+@router.post("/transcribe")
+async def transcribe_audio(request: Request) -> dict[str, Any]:
+    """Transcribe a bounded WAV upload; the client sends text through normal chat/task routing."""
+    audio = bytearray()
+    async for chunk in request.stream():
+        audio.extend(chunk)
+        if len(audio) > 4_000_000:
+            raise HTTPException(status_code=413, detail="Recording exceeds two minutes.")
+    if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+        raise HTTPException(status_code=400, detail="Expected WAV audio.")
+    try:
+        transcript = await voice_pipeline.stt.transcribe(bytes(audio))
+        return {"status": "success", "state": "idle", "transcript": transcript, "response": ""}
+    except YanaBaseError as ex:
+        raise HTTPException(status_code=400, detail=ex.to_safe_payload()) from ex
 
 
 class DeviceSelectRequest(BaseModel):
@@ -107,7 +124,9 @@ async def speak_text(req: SpeakRequest) -> Response:
     """Synthesize text to speech and return WAV audio stream."""
     try:
         audio = await voice_pipeline.direct_synthesize(req.text)
-        return Response(content=audio, media_type="audio/wav")
+        return Response(
+            content=audio, media_type=getattr(voice_pipeline.tts, "output_format", "audio/wav")
+        )
     except YanaBaseError as ex:
         raise HTTPException(status_code=400, detail=ex.to_safe_payload()) from ex
 

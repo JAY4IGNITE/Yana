@@ -4,6 +4,8 @@ param(
     [switch]$Verify
 )
 
+$ErrorActionPreference = 'Stop'
+
 # ==============================================================================
 # YANA - Multi-Layer Production Build Runner
 # Builds TypeScript packages, Vite frontend, and Rust Desktop application
@@ -14,6 +16,22 @@ Write-Host "  Building YANA Production Artifacts" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 $hasError = $false
+
+# The installed desktop must carry its Python service; a frontend-only installer cannot work.
+if ($Production -or $Installer) {
+    Push-Location "$PSScriptRoot\..\apps\agent"
+    try {
+        uv run --with pyinstaller pyinstaller --noconfirm yana_agent.spec
+        if ($LASTEXITCODE -ne 0) { throw 'Python agent packaging failed.' }
+        $agentExecutable = (Resolve-Path 'dist\yana-agent.exe').Path
+        $bundleConfig = @{ bundle = @{ resources = @{ $agentExecutable = 'yana-agent.exe' } } }
+        [System.IO.File]::WriteAllText(
+            "$PSScriptRoot\..\apps\desktop\src-tauri\tauri.bundle.local.json",
+            ($bundleConfig | ConvertTo-Json -Depth 5),
+            (New-Object System.Text.UTF8Encoding $false)
+        )
+    } finally { Pop-Location }
+}
 
 # 0. Pre-Flight Security & Invariants Verification
 if ($Verify -or $Production) {
@@ -51,6 +69,9 @@ if (Test-Path $cargoPath) {
     if ($Production -or $Installer) {
         Write-Host "  Building Rust release binary..."
         & $cargoPath build --release
+        if ($LASTEXITCODE -eq 0) {
+            Copy-Item -LiteralPath $agentExecutable -Destination 'target\release\yana-agent.exe'
+        }
     } else {
         & $cargoPath check
     }
@@ -62,7 +83,8 @@ if (Test-Path $cargoPath) {
     }
     Pop-Location
 } else {
-    Write-Host "[SKIP] Cargo not found in $HOME\.cargo\bin." -ForegroundColor DarkYellow
+    Write-Host "[FAIL] Cargo not found in $HOME\.cargo\bin." -ForegroundColor Red
+    $hasError = $true
 }
 
 # 3. Windows NSIS Installer Packaging
@@ -70,7 +92,7 @@ if ($Installer -and (-not $hasError)) {
     Write-Host "`n[3/3] Packaging Windows NSIS Installer..." -ForegroundColor Yellow
     Push-Location "$PSScriptRoot\..\apps\desktop"
     $env:PATH = "$HOME\.cargo\bin;$env:PATH"
-    npx tauri build
+    npx tauri build --config src-tauri/tauri.bundle.local.json
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] Tauri installer build failed!" -ForegroundColor Red
         $hasError = $true

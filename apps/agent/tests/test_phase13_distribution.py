@@ -76,7 +76,8 @@ def test_cors_policy_in_production():
     assert "tauri://localhost" in prod_origins
 
     dev_origins = get_cors_origins("development")
-    assert "*" in dev_origins
+    assert "*" not in dev_origins
+    assert "http://127.0.0.1:5173" in dev_origins
 
 
 @pytest.mark.asyncio

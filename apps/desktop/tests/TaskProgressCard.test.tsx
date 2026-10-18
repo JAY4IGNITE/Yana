@@ -6,6 +6,16 @@ import {
 } from "../src/components/Companion/TaskProgressCard";
 
 describe("TaskProgressCard Component", () => {
+  it("shows completed tool output so the user can read the result", () => {
+    render(<TaskProgressCard task={{
+      id: "result-task", goal: "Show system info", status: "completed", progress: 1,
+      steps: [{ version: "1.0.0", id: "result", timestamp: "2026-10-17",
+        type: "task_step", taskId: "result-task", stepId: "result", stepNumber: 1,
+        toolName: "system.info", description: "Read system information", status: "completed", output: { platform: "Windows", cpu_count: 8 } }],
+    }} />);
+    expect(screen.getByText("View result for step 1")).toBeInTheDocument();
+    expect(screen.getByText(/"platform": "Windows"/)).toBeInTheDocument();
+  });
   const sampleExecutingTask: ActiveTaskState = {
     id: "task-100",
     goal: "Run agent diagnostic mock sequence",

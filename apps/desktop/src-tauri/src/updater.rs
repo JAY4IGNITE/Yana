@@ -80,8 +80,9 @@ pub fn verify_signature_payload(
             "Cannot verify signature on empty payload.".to_string(),
         ));
     }
-    // Cryptographic validation placeholder: validates format and readiness
-    Ok(true)
+    Err(DesktopError::Security(
+        "Update signature verification is not configured. Installation is disabled.".into()
+    ))
 }
 
 #[tauri::command]
@@ -91,11 +92,11 @@ pub async fn check_for_updates() -> Result<UpdateCheckResult, SafeCommandError> 
     Ok(UpdateCheckResult {
         current_version: CURRENT_VERSION.to_string(),
         update_available: false,
-        latest_version: Some(CURRENT_VERSION.to_string()),
-        release_notes: Some("YANA v0.1.0 - Production Native Windows AI Desktop Companion release.".to_string()),
-        release_date: Some("2026-09-14".to_string()),
+        latest_version: None,
+        release_notes: None,
+        release_date: None,
         download_url: None,
-        verified: true,
-        message: format!("YANA v{} is up to date.", CURRENT_VERSION),
+        verified: false,
+        message: "Automatic updates are not configured. Use a locally built installer.".into(),
     })
 }

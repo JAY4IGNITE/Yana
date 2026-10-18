@@ -20,6 +20,7 @@ export const App: React.FC = () => {
     isGenerating,
     pendingPermission,
     agentConnected,
+    aiWarning,
     agentUrl,
     settingsOpen,
     setSettingsOpen,
@@ -28,6 +29,9 @@ export const App: React.FC = () => {
     toggleAlwaysOnTop,
     cycleScale,
     handleSendMessage,
+    handleRunAgentTask,
+    agentMode,
+    setAgentMode,
     handleToggleListening,
     handleStop,
     handleRetry,
@@ -85,12 +89,16 @@ export const App: React.FC = () => {
           isGenerating={isGenerating}
           alwaysOnTop={alwaysOnTop}
           agentConnected={agentConnected}
+          aiWarning={aiWarning}
           activeTask={activeTask}
           onCancelTask={handleCancelActiveTask}
           onDismissTask={handleDismissActiveTask}
           onCollapse={collapseWindow}
           onToggleAlwaysOnTop={toggleAlwaysOnTop}
           onSendMessage={handleSendMessage}
+          onRunTask={handleRunAgentTask}
+          agentMode={agentMode}
+          onAgentModeChange={setAgentMode}
           onToggleListening={handleToggleListening}
           onStop={handleStop}
           onRetry={handleRetry}

@@ -76,6 +76,7 @@ pnpm-debug.log*
 
 # Tauri generated assets
 apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/tauri.bundle.local.json
 
 # Graphify Output
 graphify-out/

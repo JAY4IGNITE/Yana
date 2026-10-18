@@ -17,6 +17,7 @@ import {
   MessageMetadata,
   Task,
 } from "@yana/shared-types";
+import { VoiceCapture } from "./voiceCapture";
 
 export const DEFAULT_AGENT_URL = "http://127.0.0.1:8765/api";
 
@@ -25,6 +26,7 @@ export interface AgentHealth {
   version: string;
   protocol_version: string;
   environment: string;
+  subsystems?: Record<string, { status: string; message: string }>;
 }
 
 export interface StreamCallbacks {
@@ -35,13 +37,19 @@ export interface StreamCallbacks {
 
 export class AgentClient {
   private baseUrl: string;
+  private voiceCapture = new VoiceCapture();
+  private microphoneId = "default";
+  private speakerId = "default";
+  private playback: HTMLAudioElement | null = null;
+  private playbackUrl: string | null = null;
+  private speechGeneration = 0;
 
   constructor(baseUrl: string = DEFAULT_AGENT_URL) {
     this.baseUrl = baseUrl;
   }
 
   async checkHealth(): Promise<AgentHealth> {
-    const res = await fetch(`${this.baseUrl}/health`);
+    const res = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(6500) });
     if (!res.ok) {
       throw new Error(`Healthcheck failed with status: ${res.status}`);
     }
@@ -209,11 +217,15 @@ export class AgentClient {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let completed = false;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (!completed && !signal?.aborted) throw new Error("Connection ended before the response completed. Please retry.");
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -235,6 +247,7 @@ export class AgentClient {
               callbacks.onToken(data.token);
             }
             if (data.isComplete) {
+              completed = true;
               callbacks.onDone(data.messageId, data.metadata);
             }
           } catch {
@@ -281,11 +294,15 @@ export class AgentClient {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let completed = false;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (!completed && !signal?.aborted) throw new Error("Connection ended before the response completed. Please retry.");
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -306,6 +323,7 @@ export class AgentClient {
               callbacks.onToken(data.token);
             }
             if (data.isComplete) {
+              completed = true;
               callbacks.onDone(data.messageId, data.metadata);
             }
           } catch {
@@ -367,11 +385,15 @@ export class AgentClient {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let completed = false;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (!completed && !signal?.aborted) throw new Error("Connection ended before the response completed. Please retry.");
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -384,6 +406,8 @@ export class AgentClient {
           const jsonStr = trimmed.slice(6);
           try {
             const data = JSON.parse(jsonStr);
+            if (["task_completed", "task_cancelled", "error"].includes(data.type) || data.error ||
+                (data.type === "task_status" && ["failed", "completed", "cancelled"].includes(data.status))) completed = true;
             if (data.type === "task_status" && callbacks.onStatus) {
               callbacks.onStatus(data);
             } else if (data.type === "task_step" && callbacks.onStep) {
@@ -454,6 +478,16 @@ export class AgentClient {
   }
 
   async getVoiceDevices(): Promise<VoiceDevicesResponse> {
+    if (navigator.mediaDevices?.enumerateDevices) {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mapDevice = (device: MediaDeviceInfo): AudioDevice => ({
+        id: device.deviceId, name: device.label || (device.kind === "audioinput" ? "Microphone" : "Speaker"),
+        deviceType: device.kind === "audioinput" ? "input" : "output",
+        isDefault: device.deviceId === "default", isAvailable: true,
+      });
+      return { microphones: devices.filter(d => d.kind === "audioinput").map(mapDevice),
+        speakers: devices.filter(d => d.kind === "audiooutput").map(mapDevice) };
+    }
     const res = await fetch(`${this.baseUrl}/voice/devices`);
     if (!res.ok) {
       throw new Error(`Failed to list voice devices: ${res.status}`);
@@ -465,38 +499,31 @@ export class AgentClient {
     microphoneId?: string,
     speakerId?: string
   ): Promise<Record<string, unknown>> {
-    const res = await fetch(`${this.baseUrl}/voice/devices/select`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ microphoneId, speakerId }),
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to select voice device: ${res.status}`);
-    }
-    return res.json();
+    this.microphoneId = microphoneId ?? this.microphoneId;
+    this.speakerId = speakerId ?? this.speakerId;
+    return { status: "ok" };
+
   }
 
   async startPushToTalk(): Promise<{ status: string; state: string; microphone?: string }> {
-    const res = await fetch(`${this.baseUrl}/voice/push-to-talk/start`, {
-      method: "POST",
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to start push-to-talk: ${res.status}`);
-    }
-    return res.json();
+    await this.voiceCapture.start(this.microphoneId);
+    return { status: "listening", state: "listening" };
   }
 
   async stopPushToTalk(): Promise<PushToTalkStopResponse> {
-    const res = await fetch(`${this.baseUrl}/voice/push-to-talk/stop`, {
-      method: "POST",
+    const audio = await this.voiceCapture.stop();
+    const res = await fetch(`${this.baseUrl}/voice/transcribe`, {
+      method: "POST", headers: { "Content-Type": "audio/wav" }, body: audio,
     });
     if (!res.ok) {
-      throw new Error(`Failed to stop push-to-talk: ${res.status}`);
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail?.message || `Speech recognition failed: ${res.status}`);
     }
     return res.json();
   }
 
   async stopSpeaking(): Promise<{ status: string; state: string }> {
+    this.cancelVoice();
     const res = await fetch(`${this.baseUrl}/voice/stop`, {
       method: "POST",
     });
@@ -548,6 +575,34 @@ export class AgentClient {
       throw new Error(`Failed to synthesize speech: ${res.status}`);
     }
     return res.blob();
+  }
+
+  cancelVoice(): void {
+    this.voiceCapture.cancel();
+    this.speechGeneration++;
+    this.playback?.pause();
+    this.playback = null;
+    if (this.playbackUrl) URL.revokeObjectURL(this.playbackUrl);
+    this.playbackUrl = null;
+  }
+
+  async playSpeech(text: string, onEnded: () => void): Promise<void> {
+    this.cancelVoice();
+    const generation = this.speechGeneration;
+    const blob = await this.speakText(text);
+    if (generation !== this.speechGeneration) return;
+    const url = URL.createObjectURL(blob);
+    this.playbackUrl = url;
+    const audio = new Audio(url);
+    this.playback = audio;
+    const finish = () => { if (this.playback === audio) { this.cancelVoice(); onEnded(); } };
+    audio.onended = finish;
+    audio.onerror = finish;
+    const output = audio as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+    try {
+      if (output.setSinkId && this.speakerId !== "default_speaker") await output.setSinkId(this.speakerId);
+      await audio.play();
+    } catch (error) { finish(); throw error; }
   }
 
   // =========================================================================

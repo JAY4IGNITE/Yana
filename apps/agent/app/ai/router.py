@@ -6,10 +6,10 @@ import asyncio
 from collections.abc import AsyncGenerator
 
 from app.ai.base import AIProvider
-from app.ai.mock_provider import MockAIProvider
 from app.ai.models import Message
 from app.ai.openai_provider import OpenAICompatibleProvider
 from app.config import settings
+from app.errors import ConfigurationError
 from app.logger import logger
 
 
@@ -18,7 +18,7 @@ class TieredAIRouter(AIProvider):
 
     - 🧠 Local Tier: Ollama for fast, private local inference.
     - 🚀 Heavy Tier: NVIDIA NIM for complex reasoning, multi-step planning, and vision.
-    - ☁️ Fallback Tier: Resilient cloud/mock fallback if primary tiers are unavailable.
+    - ☁️ Fallback Tier: Configured cloud provider if primary tiers are unavailable.
     """
 
     def __init__(self) -> None:
@@ -32,9 +32,14 @@ class TieredAIRouter(AIProvider):
         self._last_active_model: str = settings.ai_local_model
 
         # Initialize Heavy Reasoning (NVIDIA NIM)
-        heavy_key = (
-            settings.ai_heavy_api_key.get_secret_value() or settings.ai_api_key.get_secret_value()
-        )
+        heavy_key = settings.ai_heavy_api_key.get_secret_value()
+        if (
+            not heavy_key
+            and settings.ai_provider == settings.ai_heavy_provider
+            and settings.ai_base_url
+            and settings.ai_base_url.rstrip("/") == settings.ai_heavy_base_url.rstrip("/")
+        ):
+            heavy_key = settings.ai_api_key.get_secret_value()
         heavy_base_url = settings.ai_heavy_base_url or settings.ai_base_url
         heavy_model = settings.ai_heavy_model or settings.ai_model
 
@@ -62,7 +67,15 @@ class TieredAIRouter(AIProvider):
             )
 
         # Initialize Fallback Provider
-        self._fallback_provider = MockAIProvider()
+        if settings.ai_fallback_api_key.get_secret_value():
+            self._fallback_provider = OpenAICompatibleProvider(
+                api_key=settings.ai_fallback_api_key.get_secret_value(),
+                base_url=settings.ai_fallback_base_url,
+                model=settings.ai_fallback_model,
+                temperature=settings.ai_temperature,
+                max_tokens=settings.ai_max_tokens,
+                timeout_seconds=float(settings.tool_timeout_seconds),
+            )
 
     @property
     def active_tier(self) -> str:
@@ -86,7 +99,7 @@ class TieredAIRouter(AIProvider):
                 self._is_ollama_ready = False
                 return False
             models = await asyncio.wait_for(self._local_provider.client.models.list(), timeout=3.5)
-            is_ok = bool(models.data and len(models.data) > 0)
+            is_ok = any(m.id == self._local_provider.model for m in models.data)
             self._is_ollama_ready = is_ok
             return is_ok
         except Exception:
@@ -124,24 +137,18 @@ class TieredAIRouter(AIProvider):
 
     async def select_provider(self, messages: list[Message]) -> tuple[AIProvider, str]:
         """Select optimal provider based on query complexity and tier availability."""
-        # Explicit overrides. Record the active tier/model uniformly so that
-        # active_tier/active_model are accurate in forced routing modes too.
-        if self.routing_mode == "heavy" and self._heavy_provider:
-            self._last_active_tier = "nvidia-heavy"
-            self._last_active_model = getattr(
-                self._heavy_provider, "model", settings.ai_heavy_model
-            )
-            return self._heavy_provider, "nvidia-heavy"
-        if self.routing_mode == "local" and self._local_provider:
-            self._last_active_tier = "ollama-local"
-            self._last_active_model = getattr(
-                self._local_provider, "model", settings.ai_local_model
-            )
-            return self._local_provider, "ollama-local"
-        if self.routing_mode == "fallback":
-            self._last_active_tier = "fallback"
-            self._last_active_model = "mock"
-            return self._fallback_provider or MockAIProvider(), "fallback"
+        forced = {
+            "heavy": (self._heavy_provider, "nvidia-heavy"),
+            "local": (self._local_provider, "ollama-local"),
+            "fallback": (self._fallback_provider, "fallback"),
+        }
+        if self.routing_mode in forced:
+            provider, tier = forced[self.routing_mode]
+            if provider is None:
+                raise ConfigurationError(f"The {self.routing_mode} AI tier is not configured.")
+            self._last_active_tier = tier
+            self._last_active_model = getattr(provider, "model", "unknown")
+            return provider, tier
 
         choice: tuple[AIProvider, str]
         requires_heavy = self._is_heavy_reasoning_required(messages)
@@ -156,46 +163,44 @@ class TieredAIRouter(AIProvider):
         elif self._heavy_provider:
             logger.info("TieredAIRouter: Ollama unavailable/empty, routing to NVIDIA NIM.")
             choice = (self._heavy_provider, "nvidia-heavy")
+        elif self._fallback_provider:
+            choice = (self._fallback_provider, "fallback")
         else:
-            choice = (self._fallback_provider or MockAIProvider(), "mock-fallback")
+            raise ConfigurationError(
+                "No AI provider is available. Start Ollama with the configured model "
+                "or configure cloud credentials."
+            )
 
         self._last_active_tier = choice[1]
         self._last_active_model = getattr(choice[0], "model", settings.ai_model)
         return choice
 
-    async def send_message(
-        self,
-        messages: list[Message],
-        system_prompt: str | None = None,
-    ) -> Message:
-        """Send message through chosen provider with automated resilience fallback."""
-        primary_provider, tier_name = await self.select_provider(messages)
-        try:
-            return await primary_provider.send_message(messages, system_prompt)
-        except Exception as primary_err:
-            logger.warning(
-                "TieredAIRouter: %s failed (%s). Attempting real-tier fallback...",
-                tier_name,
-                primary_err,
-            )
-            # Fallback chain across REAL tiers only.
-            if primary_provider != self._heavy_provider and self._heavy_provider:
-                try:
-                    logger.info("TieredAIRouter: Falling back to NVIDIA NIM...")
-                    self._last_active_tier = "nvidia-heavy"
-                    return await self._heavy_provider.send_message(messages, system_prompt)
-                except Exception as heavy_err:
-                    logger.error("TieredAIRouter: Heavy fallback also failed: %s", heavy_err)
-                    primary_err = heavy_err
+    def _backups(self, primary: AIProvider) -> list[tuple[AIProvider, str]]:
+        if self.routing_mode != "auto":
+            return []
+        return [
+            (provider, tier)
+            for provider, tier in [
+                (self._heavy_provider, "nvidia-heavy"),
+                (self._fallback_provider, "fallback"),
+            ]
+            if provider is not None and provider is not primary
+        ]
 
-            # Only serve canned mock output when the operator explicitly opted
-            # into it via routing_mode="fallback". Otherwise propagate the real
-            # error so a dead AI is never mistaken for a working one.
-            if self.routing_mode == "fallback":
-                fallback = self._fallback_provider or MockAIProvider()
-                self._last_active_tier = "fallback"
-                return await fallback.send_message(messages, system_prompt)
-            raise primary_err
+    async def send_message(
+        self, messages: list[Message], system_prompt: str | None = None
+    ) -> Message:
+        primary, tier = await self.select_provider(messages)
+        candidates = [(primary, tier), *self._backups(primary)]
+        for index, (provider, name) in enumerate(candidates):
+            self._last_active_tier = name
+            self._last_active_model = getattr(provider, "model", "unknown")
+            try:
+                return await provider.send_message(messages, system_prompt)
+            except Exception:
+                if index == len(candidates) - 1:
+                    raise
+        raise ConfigurationError("No AI provider is available.")
 
     async def stream_message(
         self,
@@ -203,47 +208,29 @@ class TieredAIRouter(AIProvider):
         system_prompt: str | None = None,
         session_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream response through primary provider with fallback before first token."""
-        primary_provider, tier_name = await self.select_provider(messages)
-        first_token_received = False
-
-        try:
-            async for token in primary_provider.stream_message(messages, system_prompt, session_id):
-                first_token_received = True
-                yield token
-        except Exception as primary_err:
-            logger.warning("TieredAIRouter: %s stream failed (%s).", tier_name, primary_err)
-            if not first_token_received:
-                # Failed before any token: try a real backup tier (heavy).
-                backup_provider = (
-                    self._heavy_provider if primary_provider != self._heavy_provider else None
-                )
-                if backup_provider:
-                    logger.info("TieredAIRouter: Retrying stream with backup provider...")
-                    self._last_active_tier = "nvidia-heavy"
-                    async for token in backup_provider.stream_message(
-                        messages, system_prompt, session_id
-                    ):
-                        yield token
-                    return
-
-            # Whether the failure happened mid-stream (partial output already
-            # sent) or before any token with no real backup, re-raise so the
-            # SSE layer emits an explicit error/incomplete signal instead of
-            # silently truncating or fabricating a fake notice token.
-            raise
+        primary, tier = await self.select_provider(messages)
+        candidates = [(primary, tier), *self._backups(primary)]
+        for index, (provider, name) in enumerate(candidates):
+            self._last_active_tier = name
+            self._last_active_model = getattr(provider, "model", "unknown")
+            received = False
+            try:
+                async for token in provider.stream_message(messages, system_prompt, session_id):
+                    received = True
+                    yield token
+                return
+            except Exception:
+                if received or index == len(candidates) - 1:
+                    raise
 
     async def cancel(self, session_id: str) -> None:
-        """Broadcast cancellation to all active providers."""
-        if self._local_provider:
-            await self._local_provider.cancel(session_id)
-        if self._heavy_provider:
-            await self._heavy_provider.cancel(session_id)
-        if self._fallback_provider:
-            await self._fallback_provider.cancel(session_id)
+        for provider in (self._local_provider, self._heavy_provider, self._fallback_provider):
+            if provider:
+                await provider.cancel(session_id)
 
     async def health_check(self) -> bool:
-        """Check overall router health across providers."""
-        heavy_ok = await self._heavy_provider.health_check() if self._heavy_provider else False
-        local_ok = await self._check_ollama_status()
-        return heavy_ok or local_ok
+        try:
+            provider, _ = await self.select_provider([])
+            return await provider.health_check()
+        except Exception:
+            return False

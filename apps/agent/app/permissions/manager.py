@@ -65,7 +65,7 @@ class PermissionManager:
     async def wait_for_consent(
         self,
         tool_call_id: str,
-        timeout: float = DEFAULT_CONSENT_TIMEOUT_SECONDS,
+        timeout: float | None = None,
     ) -> bool:
         """Block until a decision for ``tool_call_id`` arrives, then return it.
 
@@ -83,7 +83,9 @@ class PermissionManager:
 
         evt = self._consent_event(tool_call_id)
         try:
-            await asyncio.wait_for(evt.wait(), timeout=timeout)
+            await asyncio.wait_for(
+                evt.wait(), timeout=DEFAULT_CONSENT_TIMEOUT_SECONDS if timeout is None else timeout
+            )
         except TimeoutError:
             # Fail-closed: no answer in time -> deny.
             self._user_consents[tool_call_id] = False

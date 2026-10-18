@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from app.config import settings
 from app.errors import ValidationError
 from app.logger import logger
 
@@ -73,9 +74,55 @@ class RuleBasedPlanner(BasePlanner):
         g_lower = goal.lower()
         steps: list[PlanStep] = []
 
+        if settings.ai_provider != "mock":
+            # Offline recovery must not invent filenames, coordinates, or content,
+            # or quietly execute only the first action of a compound request.
+            commands = [
+                (
+                    r"(?:show |get |check )?(?:system info|system telemetry|specs)",
+                    "system.get_system_info",
+                    {},
+                ),
+                (r"(?:take (?:a )?)?screenshot|capture screen", "computer.screenshot", {}),
+                (r"(?:show |get )?(?:active|foreground) window", "computer.get_active_window", {}),
+                (
+                    r"(?:open|launch) (?:app(?:lication)? )?(?P<app_name>[\w.-]+)",
+                    "system.open_application",
+                    {},
+                ),
+                (r"(?:read|inspect) file \"(?P<path>[^\"]+)\"", "filesystem.read", {}),
+                (
+                    r"(?:create directory|create folder|mkdir) \"(?P<path>[^\"]+)\"",
+                    "filesystem.create_directory",
+                    {},
+                ),
+            ]
+            for pattern, tool_name, arguments in commands:
+                match = re.fullmatch(pattern, goal.strip(), re.IGNORECASE)
+                if match:
+                    plan = Plan(
+                        task_id=tid,
+                        goal=goal,
+                        steps=[
+                            PlanStep(
+                                step_number=1,
+                                tool_name=tool_name,
+                                description=goal,
+                                arguments={**arguments, **match.groupdict()},
+                            )
+                        ],
+                    )
+                    self.validate_plan(plan, available_tools)
+                    return plan
+            raise ValidationError(
+                "AI planning is unavailable for this request. Check your AI provider "
+                "credentials and model access, then retry. Basic commands such as "
+                "'show system info' and 'open app notepad.exe' still work. No action was taken."
+            )
+
         # 1. Mock sequence / Multi-step testing flow
         mock_triggers = ["test mock", "mock flow", "diagnostic", "multi-step", "run agent"]
-        if any(w in g_lower for w in mock_triggers):
+        if settings.ai_provider == "mock" and any(w in g_lower for w in mock_triggers):
             steps = [
                 PlanStep(
                     step_number=1,
@@ -152,7 +199,8 @@ class RuleBasedPlanner(BasePlanner):
 
         # 6. Notepad / Application launch
         elif "notepad" in g_lower or "launch app" in g_lower or "open app" in g_lower:
-            app = "notepad.exe" if "notepad" in g_lower else "calc.exe"
+            match = re.search(r"(?:launch|open)\s+app(?:lication)?\s+(.+)$", goal, re.IGNORECASE)
+            app = match.group(1).strip().strip("\"'") if match else "notepad.exe"
             steps = [
                 PlanStep(
                     step_number=1,
@@ -524,6 +572,12 @@ class RuleBasedPlanner(BasePlanner):
 
         # 19. Default single-action fallback
         else:
+            if settings.ai_provider != "mock":
+                raise ValidationError(
+                    "The AI could not produce a valid plan for this request. "
+                    "Check AI connectivity or describe the action more specifically. "
+                    "No action was taken."
+                )
             steps = [
                 PlanStep(
                     step_number=1,
@@ -554,7 +608,8 @@ class LLMPlanner(BasePlanner):
         from app.ai.factory import get_ai_provider
         from app.ai.models import Message, MessageRole
 
-        provider = get_ai_provider()
+        if settings.ai_provider != "mock":
+            available_tools = [t for t in available_tools if not t["name"].startswith("mock.")]
         tools_summary = "\n".join(
             f"- {t['name']}: {t.get('description', '')} "
             f"(Input schema: {json.dumps(t.get('input_schema', {}))})"
@@ -572,6 +627,7 @@ class LLMPlanner(BasePlanner):
         )
 
         try:
+            provider = get_ai_provider()
             res_msg = await provider.send_message(
                 messages=[Message(role=MessageRole.USER, content=prompt)],
                 system_prompt="You are a strict JSON planning engine.",

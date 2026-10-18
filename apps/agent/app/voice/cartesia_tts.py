@@ -45,8 +45,8 @@ class CartesiaTTSProvider(TextToSpeechProvider):
         version: str | None = None,
         base_url: str | None = None,
     ) -> None:
-        self.api_key = api_key or settings.cartesia_api_key.get_secret_value()
-        self.voice_id = voice_id or settings.cartesia_voice_id
+        self.api_key = settings.cartesia_api_key.get_secret_value() if api_key is None else api_key
+        self.voice_id = settings.cartesia_voice_id if voice_id is None else voice_id
         self.model = model or settings.cartesia_model or "sonic-2"
         self.version = version or settings.cartesia_version or "2024-11-13"
         self.base_url = (

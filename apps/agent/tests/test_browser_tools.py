@@ -12,11 +12,16 @@ Uses local HTML files and data URLs in isolated browser sessions to test:
 - Timeouts and error handling
 """
 
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from playwright.async_api import Error as PlaywrightError
 
+from app.errors import ConfigurationError
 from app.tools.browser.browser_tools import (
     BrowserBackTool,
     BrowserClickTool,
@@ -271,3 +276,74 @@ async def test_browser_history_and_refresh(session_mgr: BrowserSessionManager, t
     # Refresh
     res_ref = await ref_tool.execute({})
     assert res_ref["status"] == "refreshed"
+
+
+@pytest.mark.asyncio
+async def test_browser_recovers_after_its_window_is_closed(session_mgr: BrowserSessionManager):
+    page = await session_mgr.get_active_page()
+    await page.set_content("<h1>Old session</h1>")
+    browser = page.context.browser
+    assert browser is not None
+    await browser.close()
+
+    replacement = await session_mgr.get_active_page()
+    await replacement.set_content("<h1>Recovered session</h1>")
+    assert await replacement.locator("h1").inner_text() == "Recovered session"
+    assert replacement is not page
+
+
+@pytest.mark.asyncio
+async def test_browser_recovers_after_context_is_closed(session_mgr: BrowserSessionManager):
+    page = await session_mgr.get_active_page()
+    await page.context.close()
+    replacement = await session_mgr.get_active_page()
+    await replacement.set_content("<h1>New context</h1>")
+    assert await replacement.locator("h1").inner_text() == "New context"
+
+
+@pytest.mark.asyncio
+async def test_active_page_is_tracked_only_once(session_mgr: BrowserSessionManager):
+    page = await session_mgr.get_active_page()
+    assert session_mgr._pages == [page]
+
+
+@pytest.mark.asyncio
+async def test_windows_browser_works_without_developer_chromium_cache(monkeypatch, tmp_path):
+    import sys
+
+    if sys.platform != "win32":
+        pytest.skip("Installed Windows browser fallback")
+    # A fresh cache models an installed app on a PC that has never run setup.ps1.
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "empty-browser-cache"))
+    manager = BrowserSessionManager(sandbox_dir=tmp_path / "downloads")
+    try:
+        page = await manager.get_active_page()
+        await page.set_content("<h1>Installed browser works</h1>")
+        assert await page.locator("h1").inner_text() == "Installed browser works"
+    finally:
+        await manager.close_session()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_browser_requests_share_a_session(session_mgr: BrowserSessionManager):
+    contexts = await asyncio.gather(*(session_mgr.get_or_create_context() for _ in range(3)))
+    assert all(context is contexts[0] for context in contexts)
+
+
+@pytest.mark.asyncio
+async def test_missing_browsers_report_actionable_setup_error(tmp_path):
+    manager = BrowserSessionManager(sandbox_dir=tmp_path)
+    launch = AsyncMock(side_effect=PlaywrightError("Executable doesn't exist"))
+    manager._playwright = SimpleNamespace(chromium=SimpleNamespace(launch=launch))
+    with pytest.raises(ConfigurationError, match="Install Microsoft Edge or Google Chrome"):
+        await manager.get_or_create_context()
+
+
+@pytest.mark.asyncio
+async def test_browser_crash_is_not_mistaken_for_missing_installation(tmp_path):
+    manager = BrowserSessionManager(sandbox_dir=tmp_path)
+    launch = AsyncMock(side_effect=PlaywrightError("Browser process crashed"))
+    manager._playwright = SimpleNamespace(chromium=SimpleNamespace(launch=launch))
+    with pytest.raises(PlaywrightError, match="Browser process crashed"):
+        await manager.get_or_create_context()
+    launch.assert_awaited_once()
