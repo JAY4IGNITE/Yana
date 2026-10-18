@@ -57,6 +57,7 @@ class BrowserSessionManager:
                 self._browser = await self._launch_browser(use_headless)
 
             if self._context is None:
+                assert self._browser is not None
                 self._context = await self._browser.new_context(
                     accept_downloads=True,
                     viewport={"width": 1280, "height": 800},

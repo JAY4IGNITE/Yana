@@ -13,6 +13,7 @@ Enforces Phase 11 multi-step controls and loop protections:
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from typing import Any
 from uuid import uuid4
 
 from app.config import settings
@@ -221,22 +222,22 @@ class AgentOrchestrator:
 
             # System 1 Intercept
             try:
-                intent_res = {"intent": "chat", "intent_confidence": 0.0}
+                intent_res: dict[str, Any] = {"intent": "chat", "intent_confidence": 0.0}
                 if settings.intent_router_enabled:
                     from app.core.executor.router import system1_router
 
                     intent_res = await asyncio.to_thread(system1_router.analyze, goal)
                 logger.info(f"System 1 Routing: {intent_res}")
 
-                if (
-                    intent_res["intent"] == "system_command"
-                    and intent_res["intent_confidence"] > 0.85
-                ):
+                confidence = float(intent_res.get("intent_confidence", 0.0))
+                intent_name = str(intent_res.get("intent", ""))
+
+                if intent_name == "system_command" and confidence > 0.85:
                     from app.core.planner.base import RuleBasedPlanner
 
                     planner_to_use = RuleBasedPlanner()
                     logger.info("Fast-pathing system command to RuleBasedPlanner via Laya.")
-                elif intent_res["intent"] == "harmful" and intent_res["intent_confidence"] > 0.90:
+                elif intent_name == "harmful" and confidence > 0.90:
                     err = SafeErrorPayload(
                         code=ErrorCode.PERMISSION_ERROR,
                         message="Task blocked by System 1 safety guardrails.",

@@ -10,7 +10,7 @@ def test_routing():
         "Stop playing music",
         "Write a python script to parse a csv file",
         "Tell me a joke about a penguin",
-        "Delete all files in my C drive immediately"
+        "Delete all files in my C drive immediately",
     ]
 
     for p in prompts:
@@ -22,7 +22,8 @@ def test_routing():
         print(f"  -> Intent: {res['intent']} (Conf: {res['intent_confidence']:.2f})")
         print(f"  -> Urgency: {res['urgency_score']:.2f}")
         print(f"  -> Routed By: {res['routed_by']}")
-        print(f"  -> Time: {(t1-t0)*1000:.1f}ms\n")
+        print(f"  -> Time: {(t1 - t0) * 1000:.1f}ms\n")
+
 
 if __name__ == "__main__":
     test_routing()

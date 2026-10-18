@@ -77,7 +77,7 @@ class RuleBasedPlanner(BasePlanner):
         if settings.ai_provider != "mock":
             # Offline recovery must not invent filenames, coordinates, or content,
             # or quietly execute only the first action of a compound request.
-            commands = [
+            commands: list[tuple[str, str, dict[str, Any]]] = [
                 (
                     r"(?:show |get |check )?(?:system info|system telemetry|specs)",
                     "system.get_system_info",

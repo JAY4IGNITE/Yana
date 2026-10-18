@@ -10,13 +10,17 @@ static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 static START_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub fn launch_spec(resource_dir: &Path, development: bool) -> Result<(PathBuf, PathBuf, Vec<String>), String> {
+    let agent_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../agent");
+    launch_spec_with_agent_dir(&agent_dir, resource_dir, development)
+}
+
+pub fn launch_spec_with_agent_dir(agent_dir: &Path, resource_dir: &Path, development: bool) -> Result<(PathBuf, PathBuf, Vec<String>), String> {
     if development {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../agent");
-        let python = dir.join(".venv/Scripts/python.exe");
+        let python = agent_dir.join(".venv/Scripts/python.exe");
         if !python.is_file() {
             return Err("Agent environment is missing. Run scripts/setup.ps1 first.".into());
         }
-        Ok((python, dir, vec!["-m".into(), "app.main".into()]))
+        Ok((python, agent_dir.to_path_buf(), vec!["-m".into(), "app.main".into()]))
     } else {
         let executable = resource_dir.join("yana-agent.exe");
         if !executable.is_file() {
@@ -144,10 +148,36 @@ mod tests {
         assert!(launch_spec(&missing, false).is_err());
     }
     #[test]
+    fn missing_development_agent_is_an_error_when_venv_absent() {
+        let missing = std::env::temp_dir().join("yana-missing-dev-agent-test");
+        assert!(launch_spec_with_agent_dir(&missing, Path::new("."), true).is_err());
+    }
+    #[test]
     fn development_launch_uses_project_python_without_a_shell() {
-        let (program, cwd, args) = launch_spec(Path::new("."), true).unwrap();
-        assert!(program.ends_with(".venv/Scripts/python.exe"));
-        assert!(cwd.ends_with("agent"));
+        let temp_dir = std::env::temp_dir().join(format!("yana-dev-spec-test-{}", std::process::id()));
+        let python_dir = temp_dir.join(".venv/Scripts");
+        std::fs::create_dir_all(&python_dir).unwrap();
+        let python_file = python_dir.join("python.exe");
+        std::fs::write(&python_file, b"").unwrap();
+
+        let res = launch_spec_with_agent_dir(&temp_dir, Path::new("."), true);
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let (program, cwd, args) = res.unwrap();
+        assert!(program.to_string_lossy().replace('\\', "/").ends_with(".venv/Scripts/python.exe"));
+        assert_eq!(cwd, temp_dir);
         assert_eq!(args, vec!["-m", "app.main"]);
+    }
+    #[test]
+    fn launch_spec_development_consistent_with_environment() {
+        let manifest_agent = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../agent");
+        if manifest_agent.join(".venv/Scripts/python.exe").is_file() {
+            let (program, cwd, args) = launch_spec(Path::new("."), true).unwrap();
+            assert!(program.to_string_lossy().replace('\\', "/").ends_with(".venv/Scripts/python.exe"));
+            assert!(cwd.ends_with("agent"));
+            assert_eq!(args, vec!["-m", "app.main"]);
+        } else {
+            assert!(launch_spec(Path::new("."), true).is_err());
+        }
     }
 }

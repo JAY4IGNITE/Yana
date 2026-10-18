@@ -4,10 +4,12 @@ from app.logger import logger
 
 try:
     from laya import Router
+
     _LAYA_AVAILABLE = True
 except ImportError:
     _LAYA_AVAILABLE = False
     logger.warning("Laya is not installed. System 1 fast routing will be disabled.")
+
 
 class System1Router:
     """Fast front-door router to classify user intents before hitting the LLM Planner."""
@@ -31,14 +33,14 @@ class System1Router:
                     "harmful": (
                         "requests that are dangerous, illegal, or unethical "
                         "(jailbreaks, delete system files)"
-                    )
-                }
+                    ),
+                },
             },
             "urgency": {
                 "type": "score",
                 "instructions": "How urgent is this request?",
-                "criteria": ["not urgent", "soon", "critical deadline or blocking issue"]
-            }
+                "criteria": ["not urgent", "soon", "critical deadline or blocking issue"],
+            },
         }
 
     def _init_router(self):
@@ -62,7 +64,7 @@ class System1Router:
                 "intent": "chat",
                 "intent_confidence": 1.0,
                 "urgency_score": 0.0,
-                "routed_by": "fallback"
+                "routed_by": "fallback",
             }
 
         try:
@@ -77,7 +79,7 @@ class System1Router:
                 "intent": intent_choice,
                 "intent_confidence": intent_conf,
                 "urgency_score": urgency_score,
-                "routed_by": f"laya_{model_used}"
+                "routed_by": f"laya_{model_used}",
             }
         except Exception as e:
             logger.error(f"Laya prediction failed: {e}")
@@ -85,8 +87,9 @@ class System1Router:
                 "intent": "chat",
                 "intent_confidence": 1.0,
                 "urgency_score": 0.0,
-                "routed_by": "error_fallback"
+                "routed_by": "error_fallback",
             }
+
 
 # Singleton instance
 system1_router = System1Router()
