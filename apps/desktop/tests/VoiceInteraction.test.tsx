@@ -51,6 +51,7 @@ describe("VoiceInteraction - Settings & Audio Controls", () => {
         selectedMicId="mic_default"
         selectedSpeakerId="spk_default"
         wakeWordEnabled={false}
+        wakeWordAvailable={true}
       />
     );
 
@@ -119,6 +120,7 @@ describe("VoiceInteraction - Settings & Audio Controls", () => {
         agentConnected={true}
         agentUrl="http://127.0.0.1:8765/api"
         wakeWordEnabled={false}
+        wakeWordAvailable={true}
         onToggleWakeWord={onToggleWakeWord}
       />
     );

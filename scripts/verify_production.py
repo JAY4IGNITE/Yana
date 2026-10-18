@@ -38,6 +38,7 @@ IGNORE_DIRS = {
     ".ruff_cache",
     "target",
     "dist",
+    "build",
     "gen",
     "__pycache__",
 }
@@ -68,6 +69,9 @@ def scan_for_secrets() -> list[str]:
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
 
         for file in files:
+            # Local runtime credentials are intentionally outside source control.
+            if file == ".env" or (file.startswith(".env.") and file != ".env.example"):
+                continue
             if file in EXEMPT_FILES:
                 continue
 

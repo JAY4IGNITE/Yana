@@ -40,8 +40,7 @@ fn test_update_url_validation_enforces_https() {
 fn test_signature_payload_validation() {
     let payload = b"{\"version\":\"0.2.0\"}";
     let res = verify_signature_payload(payload, "dummy_sig_base64", "dummy_pubkey_base64");
-    assert!(res.is_ok());
-    assert!(res.unwrap());
+    assert!(res.is_err()); // Arbitrary strings must never pass signature verification.
 
     // Empty signature rejected
     let empty_sig = verify_signature_payload(payload, "", "pubkey");
@@ -55,7 +54,7 @@ fn test_signature_payload_validation() {
 #[test]
 fn test_agent_supervisor_circuit_breaker_prevents_restart_loops() {
     let mut supervisor = AgentSupervisor::new();
-    assert_eq!(supervisor.state, SupervisorState::Running);
+    assert_eq!(supervisor.state, SupervisorState::Stopped);
 
     // 1st failure: triggers restart with initial backoff
     let s1 = supervisor.record_failure();

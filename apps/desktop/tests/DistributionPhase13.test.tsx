@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { SettingsModal } from "../src/components/Settings/SettingsModal";
 
 // Mock @tauri-apps/api/core invoke
@@ -11,7 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return {
         current_version: "0.1.0",
         update_available: false,
-        message: "YANA v0.1.0 is up to date.",
+        message: "Automatic updates are not configured.",
       };
     }
     if (cmd === "get_agent_supervisor_status") {
@@ -33,6 +34,41 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 describe("Phase 13: Windows Distribution UI Components", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("can restart a connected agent to reload configuration without duplicate requests", async () => {
+    render(<SettingsModal isOpen onClose={() => {}} agentConnected agentUrl="http://127.0.0.1:8765/api" />);
+    // Let initial status requests settle before holding the restart response.
+    await act(async () => {});
+    const restart = screen.getByRole("button", { name: "Restart" });
+    let finish!: (status: unknown) => void;
+    vi.mocked(invoke).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    fireEvent.click(restart);
+    expect(restart).toBeDisabled();
+    expect(screen.getByText("Restarting...")).toBeInTheDocument();
+    fireEvent.click(restart);
+    await act(async () => finish({ state: "Running", circuit_breaker_tripped: false, message: "Agent ready." }));
+    await waitFor(() => expect(restart).toBeEnabled());
+    expect(screen.getByRole("status")).toHaveTextContent("Agent ready.");
+  });
+
+  it("shows a native restart failure and releases the restart button", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    render(<SettingsModal isOpen onClose={() => {}} agentConnected agentUrl="http://127.0.0.1:8765/api" />);
+    await act(async () => {});
+    vi.mocked(invoke).mockRejectedValueOnce({ message: "Agent exited during startup." });
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Agent exited during startup.");
+    expect(screen.getByRole("button", { name: "Restart" })).toBeEnabled();
+  });
+
+  it("gives browser preview restart instructions instead of a native bridge error", async () => {
+    render(<SettingsModal isOpen onClose={() => {}} agentConnected agentUrl="http://127.0.0.1:8765/api" />);
+    await act(async () => {});
+    vi.mocked(invoke).mockRejectedValueOnce(new TypeError("Cannot read properties of undefined"));
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("For browser preview, restart the agent in its terminal.");
+  });
+
   it("renders Windows Startup option and environment badge in General tab", () => {
     render(
       <SettingsModal
@@ -50,7 +86,7 @@ describe("Phase 13: Windows Distribution UI Components", () => {
     expect(toggle).toBeInTheDocument();
 
     // Verify Environment and Release version badges
-    expect(screen.getByText("Production Native")).toBeInTheDocument();
+    expect(screen.getByText("Browser Preview")).toBeInTheDocument();
     expect(screen.getByText("v0.1.0")).toBeInTheDocument();
   });
 
@@ -68,7 +104,7 @@ describe("Phase 13: Windows Distribution UI Components", () => {
     expect(updateBtn).toBeInTheDocument();
     fireEvent.click(updateBtn);
 
-    const statusText = await screen.findByText(/YANA v0.1.0 is up to date/);
+    const statusText = await screen.findByText(/Automatic updates are not configured/);
     expect(statusText).toBeInTheDocument();
   });
 

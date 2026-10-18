@@ -11,3 +11,10 @@ module (and therefore the settings singleton) is imported:
 import os
 
 os.environ.setdefault("YANA_PLANNER_MODE", "rule")
+# Unit tests must not inherit the developer's live cloud credentials or permission mode.
+os.environ["YANA_ENV"] = "testing"
+os.environ["YANA_PERMISSION_MODE"] = "strict"
+os.environ["YANA_AI_PROVIDER"] = "mock"
+os.environ["YANA_STT_PROVIDER"] = "mock"
+os.environ["YANA_TTS_PROVIDER"] = "mock"
+os.environ["YANA_INTENT_ROUTER_ENABLED"] = "false"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   X,
   Server,
@@ -20,7 +21,6 @@ import { AudioDevice, agentClient, ProjectMemoryPayload } from "../../services/a
 
 async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
     return await invoke(cmd, args);
   } catch {
     return null;
@@ -37,6 +37,7 @@ interface SettingsModalProps {
   selectedMicId?: string;
   selectedSpeakerId?: string;
   wakeWordEnabled?: boolean;
+  wakeWordAvailable?: boolean;
   onSelectMic?: (id: string) => void;
   onSelectSpeaker?: (id: string) => void;
   onToggleWakeWord?: (enabled: boolean) => void;
@@ -53,6 +54,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   selectedMicId,
   selectedSpeakerId,
   wakeWordEnabled = false,
+  wakeWordAvailable = false,
   onSelectMic,
   onSelectSpeaker,
   onToggleWakeWord,
@@ -66,6 +68,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [autostartEnabled, setAutostartEnabled] = useState<boolean>(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [restartStatus, setRestartStatus] = useState<string | null>(null);
   const [supervisorStatus, setSupervisorStatus] = useState<{
     state: string;
     circuit_breaker_tripped: boolean;
@@ -100,7 +104,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } else if (res === false) {
       setAutostartEnabled(!enable);
     } else {
-      setAutostartEnabled(enable);
+      setUpdateStatus("Windows startup settings are only available in the native desktop app.");
     }
   };
 
@@ -110,9 +114,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const res = await safeInvoke<any>("check_for_updates");
       if (res) {
-        setUpdateStatus(res.message || "YANA is up to date.");
+        setUpdateStatus(res.message || "Update status unavailable.");
       } else {
-        setUpdateStatus("YANA v0.1.0 is up to date.");
+        setUpdateStatus("Update checking is unavailable in this environment.");
       }
     } catch {
       setUpdateStatus("Update service unavailable.");
@@ -122,13 +126,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleRestartService = async () => {
+    if (isRestarting) return;
+    setIsRestarting(true);
+    setRestartStatus("Restarting the agent...");
     try {
-      const res = await safeInvoke<any>("restart_agent_service");
+      const res = await invoke<NonNullable<typeof supervisorStatus>>("restart_agent_service");
       if (res) {
         setSupervisorStatus(res);
+        setRestartStatus(res.message);
+      } else {
+        setRestartStatus("Could not restart the agent. Use the native desktop app and check its agent.log.");
       }
-    } catch {
-      // Handled gracefully
+    } catch (error) {
+      setRestartStatus(
+        !("__TAURI_INTERNALS__" in window)
+          ? "Restart is available in the native desktop app. For browser preview, restart the agent in its terminal."
+          : error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Could not restart the agent. Use the native desktop app and check its agent.log."
+      );
+    } finally {
+      setIsRestarting(false);
     }
   };
 
@@ -168,7 +186,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       data-testid="settings-modal"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
     >
-      <div className="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-2xl p-5 shadow-2xl space-y-4">
+      <div className="w-full max-w-md max-h-full overflow-y-auto bg-slate-900 border border-slate-700/80 rounded-2xl p-5 shadow-2xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center space-x-2">
@@ -241,23 +259,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {(!agentConnected || supervisorStatus?.circuit_breaker_tripped) && (
                 <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
                   <p className="text-[11px] text-amber-400/90 leading-tight">
                     {supervisorStatus?.circuit_breaker_tripped
                       ? "Circuit breaker OPEN: auto-restarts paused."
-                      : "Agent is unreachable or restarting."}
+                      : agentConnected
+                        ? "Restart after changing configuration."
+                        : "Agent is unreachable or restarting."}
                   </p>
                   <button
                     onClick={handleRestartService}
+                    disabled={isRestarting}
                     data-testid="restart-agent-btn"
-                    className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded text-[11px] font-medium transition flex items-center space-x-1"
+                    className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded text-[11px] font-medium transition flex items-center space-x-1 disabled:opacity-50"
                   >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Restart</span>
+                    <RefreshCw className={`w-3 h-3 ${isRestarting ? "animate-spin" : ""}`} />
+                    <span>{isRestarting ? "Restarting..." : "Restart"}</span>
                   </button>
                 </div>
-              )}
+              {restartStatus && <p role="status" className="text-[11px] text-slate-400">{restartStatus}</p>}
             </div>
 
             {/* Windows Distribution Startup Option */}
@@ -283,7 +303,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 font-medium">Environment</span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                  Production Native
+                  {"__TAURI_INTERNALS__" in window ? "Windows Desktop" : "Browser Preview"}
                 </span>
               </div>
               <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
@@ -329,8 +349,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="font-medium">Security Principle</span>
               </div>
               <p className="text-slate-400 leading-relaxed text-[11px]">
-                AI never controls the OS directly. All actions pass through permission gates,
-                cryptographic validations, and tool verification.
+                PC actions run through registered tools, permission checks, and result verification.
               </p>
             </div>
 
@@ -403,13 +422,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <input
                   type="checkbox"
                   checked={wakeWordEnabled}
+                  disabled={!wakeWordAvailable}
                   onChange={(e) => onToggleWakeWord && onToggleWakeWord(e.target.checked)}
                   className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
                   aria-label="Toggle Wake Word"
                 />
               </div>
               <p className="text-[10px] text-slate-400 leading-relaxed">
-                Privacy-conscious: detection operates locally on device memory frames and does not continuously stream audio to remote servers.
+                {wakeWordAvailable ? "Local wake-word detection is available." : "A local wake-word engine is not installed. Use the microphone button or keyboard shortcut."}
               </p>
             </div>
 

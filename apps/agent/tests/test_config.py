@@ -9,7 +9,7 @@ def test_default_config_loading() -> None:
     settings = AgentSettings()
     assert settings.agent_port == 8765
     assert settings.permission_mode in ["strict", "permissive"]
-    assert settings.env in ["development", "staging", "production"]
+    assert settings.env in ["development", "testing", "production"]
 
 
 def test_secret_redaction() -> None:

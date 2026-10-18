@@ -12,6 +12,7 @@ from app.ai.base import AIProvider
 from app.ai.mock_provider import MockAIProvider
 from app.ai.openai_provider import OpenAICompatibleProvider
 from app.config import settings
+from app.errors import ConfigurationError
 from app.logger import logger
 
 # Providers that require a real API key to function.
@@ -31,6 +32,17 @@ def _config_signature() -> tuple:
         settings.ai_model,
         settings.ai_local_base_url,
         settings.ai_local_model,
+        settings.ai_api_key.get_secret_value(),
+        settings.ai_heavy_api_key.get_secret_value(),
+        settings.ai_heavy_base_url,
+        settings.ai_heavy_model,
+        settings.ai_fallback_provider,
+        settings.ai_fallback_api_key.get_secret_value(),
+        settings.ai_fallback_base_url,
+        settings.ai_fallback_model,
+        settings.ai_temperature,
+        settings.ai_max_tokens,
+        settings.tool_timeout_seconds,
     )
 
 
@@ -43,10 +55,10 @@ def _build_provider() -> AIProvider:
 
     # Auto routing across multiple tiers takes precedence over single-provider
     # short-circuits so that ai_routing_mode="auto" is never a silent no-op.
-    if settings.ai_routing_mode == "auto":
+    if settings.ai_routing_mode in {"auto", "heavy", "fallback"}:
         from app.ai.router import TieredAIRouter
 
-        logger.info("Initializing TieredAIRouter (ai_routing_mode=auto).")
+        logger.info("Initializing TieredAIRouter (mode=%s).", settings.ai_routing_mode)
         return TieredAIRouter()
 
     if provider_name == "ollama":
@@ -104,12 +116,11 @@ def _build_provider() -> AIProvider:
     # Unrecognized provider name. Warn rather than silently masquerading as a
     # working assistant via the mock provider.
     logger.warning(
-        "Unrecognized AI provider '%s'; falling back to MockAIProvider. "
-        "Set YANA_AI_PROVIDER to one of: mock, ollama, %s.",
+        "Unrecognized AI provider '%s'. Set YANA_AI_PROVIDER to one of: mock, ollama, %s.",
         provider_name,
         ", ".join(sorted(_KEYED_PROVIDERS)),
     )
-    return MockAIProvider()
+    raise ConfigurationError(f"Unsupported AI provider: {provider_name}")
 
 
 def get_ai_provider() -> AIProvider:

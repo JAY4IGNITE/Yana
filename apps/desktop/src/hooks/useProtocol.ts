@@ -42,6 +42,7 @@ export function useProtocol() {
   // 1. App State
   const [appStatus, setAppStatus] = useState<"ready" | "busy" | "error" | "offline">("ready");
   const [agentConnected, setAgentConnected] = useState<boolean>(false);
+  const [aiWarning, setAiWarning] = useState<string | null>(null);
 
   // 2. Pet State
   const [petState, setPetState] = useState<PetState>("idle");
@@ -66,6 +67,9 @@ export function useProtocol() {
   const [currentTaskStatus, setCurrentTaskStatus] = useState<TaskStatus | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<ActiveTaskState | null>(null);
+  // Chat vs. Agent routing. Fail-safe default is "chat" so casual input can never
+  // silently launch tools — the user must opt into agentic execution.
+  const [agentMode, setAgentMode] = useState<"chat" | "agent">("chat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationListOpen, setConversationListOpen] = useState(false);
 
@@ -76,9 +80,13 @@ export function useProtocol() {
   const [selectedSpeakerId, setSelectedSpeakerId] = useState<string>("default_speaker");
   const [wakeWordEnabled, setWakeWordEnabled] = useState<boolean>(false);
 
+  useEffect(() => () => { agentClient.cancelVoice(); }, []);
+
   // Ref to cancel active stream
   const abortControllerRef = useRef<AbortController | null>(null);
   const agentTaskAbortRef = useRef<AbortController | null>(null);
+  const voiceShortcutRef = useRef<() => Promise<void>>(async () => {});
+  const voiceRequestRef = useRef(0);
 
   // Voice device refresher
   const refreshVoiceDevices = useCallback(async () => {
@@ -87,8 +95,6 @@ export function useProtocol() {
       setMicrophones(dev.microphones || []);
       setSpeakers(dev.speakers || []);
       const st = await agentClient.getVoiceStatus();
-      if (st.microphone) setSelectedMicId(st.microphone.id);
-      if (st.speaker) setSelectedSpeakerId(st.speaker.id);
       setWakeWordEnabled(st.wakeWordEnabled);
     } catch {
       // Offline fallback
@@ -98,7 +104,9 @@ export function useProtocol() {
   // Check backend health
   const checkConnection = useCallback(async () => {
     try {
-      await agentClient.checkHealth();
+      const health = await agentClient.checkHealth();
+      const ai = health.subsystems?.ai_provider;
+      setAiWarning(ai && ai.status !== "healthy" ? ai.message : null);
       setAgentConnected(true);
       if (appStatus === "offline") setAppStatus("ready");
       refreshVoiceDevices();
@@ -170,7 +178,7 @@ export function useProtocol() {
 
     safeListen("global-shortcut-triggered", () => {
       expandWindow();
-      setPetState("listening");
+      void voiceShortcutRef.current();
     }).then((cleanup) => {
       unlistenShortcut = cleanup;
     });
@@ -191,6 +199,7 @@ export function useProtocol() {
   // Phase 03: Autonomous Agent Task Execution
   const handleRunAgentTask = useCallback(
     async (goal: string) => {
+      if (agentTaskAbortRef.current) return;
       const taskId = crypto.randomUUID ? crypto.randomUUID() : `task-${Date.now()}`;
       setActiveTask({
         id: taskId,
@@ -237,6 +246,10 @@ export function useProtocol() {
               ) {
                 setPetState("listening");
                 setPetMood("curious");
+              } else if (["failed", "cancelled", "completed"].includes(st.status)) {
+                setPendingPermission(null);
+                setAppStatus("ready");
+                setPetState(st.status === "failed" ? "error" : "idle");
               }
             },
             onStep: (step: TaskStepPayload) => {
@@ -258,6 +271,14 @@ export function useProtocol() {
                   stepDescription: step.description,
                 };
               });
+            },
+            onPermissionRequest: (req: PermissionRequest) => {
+              // Open the consent modal mid-task. The task is blocked server-side
+              // on req.toolCallId; handleGrantPermission/handleDenyPermission post
+              // the decision and the SAME stream resumes.
+              setPendingPermission(req);
+              setPetState("listening");
+              setPetMood("curious");
             },
             onCompleted: (done: TaskCompleted) => {
               setActiveTask((prev) =>
@@ -316,6 +337,7 @@ export function useProtocol() {
           controller.signal
         );
       } catch (err: unknown) {
+        if (controller.signal.aborted) return;
         setActiveTask((prev) =>
           prev
             ? {
@@ -328,12 +350,16 @@ export function useProtocol() {
         setPetState("error");
         setPetMood("concerned");
         setAppStatus("ready");
+      } finally {
+        if (agentTaskAbortRef.current === controller) agentTaskAbortRef.current = null;
+        setPendingPermission(null);
       }
     },
     [currentConversationId]
   );
 
   const handleCancelActiveTask = useCallback(async () => {
+    setPendingPermission(null);
     if (!activeTask) return;
     if (agentTaskAbortRef.current) {
       agentTaskAbortRef.current.abort();
@@ -364,6 +390,12 @@ export function useProtocol() {
 
   // Stop / Cancel active generation
   const handleStop = useCallback(async () => {
+    voiceRequestRef.current++;
+    agentClient.cancelVoice();
+    setPendingPermission(null);
+    setMessages((prev) => prev.map((message) => ({
+      ...message, metadata: { ...message.metadata, isStreaming: false },
+    })));
     // 1. Abort local fetch
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -417,7 +449,8 @@ export function useProtocol() {
   }, [activeSessionId, activeTask, agentConnected, currentTaskStatus?.status]);
 
   // Send message flow (Ollama LLM with streaming & fallback)
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, speakReply = false) => {
+    let responseText = "";
     if (!text.trim()) return;
 
     // Normal conversational message
@@ -489,6 +522,7 @@ export function useProtocol() {
         sessionId,
         {
           onToken: (token: string) => {
+            responseText += token;
             setPetState("speaking");
             setIsSpeaking(true);
             setMessages((prev) =>
@@ -515,6 +549,17 @@ export function useProtocol() {
             setPetState("idle");
             setAppStatus("ready");
             refreshConversations();
+            if (speakReply && responseText) {
+              setIsSpeaking(true);
+              setPetState("speaking");
+              void agentClient.playSpeech(responseText, () => {
+                setIsSpeaking(false); setPetState("idle");
+              }).catch((error: Error) => {
+                setIsSpeaking(false); setPetState("error");
+                setMessages(prev => [...prev, { id: crypto.randomUUID(), conversationId: currentConversationId,
+                  role: "error", content: `Speech playback failed: ${error.message}`, timestamp: new Date().toISOString() }]);
+              });
+            }
           },
           onError: (err: SafeErrorPayload) => {
             setMessages((prev) =>
@@ -542,7 +587,8 @@ export function useProtocol() {
         },
         controller.signal
       );
-    } catch {
+    } catch (streamError) {
+      if (controller.signal.aborted || (streamError as Error)?.name === "AbortError") return;
       // Direct fallback to standard non-streaming chat endpoint
       try {
         const chatRes = await agentClient.sendChat(text, currentConversationId, controller.signal);
@@ -613,28 +659,8 @@ export function useProtocol() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    if (!agentConnected) {
-      setTimeout(() => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsgId
-              ? {
-                  ...m,
-                  content: "Retry simulated: Ready to serve.",
-                  metadata: { isStreaming: false },
-                }
-              : m
-          )
-        );
-        setIsGenerating(false);
-        setPetState("idle");
-        setAppStatus("ready");
-        setActiveSessionId(null);
-      }, 500);
-      return;
-    }
-
-    await agentClient.retryConversation(
+    try {
+      await agentClient.retryConversation(
       currentConversationId,
       sessionId,
       {
@@ -693,6 +719,20 @@ export function useProtocol() {
       },
       controller.signal
     );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? {
+          ...m, role: "error", content: `Retry failed: ${error instanceof Error ? error.message : "Connection failed"}`,
+          metadata: { isStreaming: false },
+        } : m));
+        setPetState("error");
+      }
+    } finally {
+      setIsGenerating(false);
+      setIsSpeaking(false);
+      setActiveSessionId(null);
+      setAppStatus("ready");
+    }
   };
 
   // Clear conversation
@@ -755,68 +795,58 @@ export function useProtocol() {
   };
 
   const handleStartPushToTalk = async () => {
-    if (isSpeaking) {
-      await handleInterruptSpeaking();
-      return;
-    }
-    setIsListening(true);
-    setPetState("listening");
-    setPetMood("curious");
+    const request = ++voiceRequestRef.current;
+    agentClient.cancelVoice();
+    setIsSpeaking(false);
     try {
-      if (agentConnected) {
-        await agentClient.startPushToTalk();
-      }
-    } catch {
-      // Offline fallback
+      await agentClient.startPushToTalk();
+      if (request !== voiceRequestRef.current) return;
+      setIsListening(true);
+      setPetState("listening");
+      setPetMood("curious");
+    } catch (error) {
+      if (request !== voiceRequestRef.current) return;
+      setIsListening(false);
+      setPetState("error");
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(), conversationId: currentConversationId, role: "error",
+        content: error instanceof Error ? error.message : "Microphone could not start.",
+        timestamp: new Date().toISOString(),
+      }]);
     }
   };
 
   const handleStopPushToTalk = async () => {
+    const request = ++voiceRequestRef.current;
     setIsListening(false);
+    setIsGenerating(true);
     setPetState("thinking");
     setPetMood("focused");
 
     try {
       if (agentConnected) {
         const res = await agentClient.stopPushToTalk();
-        if (res.transcript && res.transcript.trim()) {
-          const userMsg: ConversationMessage = {
-            id: crypto.randomUUID ? crypto.randomUUID() : `user-${Date.now()}`,
-            conversationId: currentConversationId,
-            role: "user",
-            content: res.transcript,
-            timestamp: new Date().toISOString(),
-          };
-          const assistantMsg: ConversationMessage = {
-            id: crypto.randomUUID ? crypto.randomUUID() : `asst-${Date.now()}`,
-            conversationId: currentConversationId,
-            role: "assistant",
-            content: res.response,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, userMsg, assistantMsg]);
-          setPetState("speaking");
-          setIsSpeaking(true);
-          setPetMood("happy");
-
-          setTimeout(() => {
-            setIsSpeaking(false);
-            setPetState("idle");
-            setPetMood("neutral");
-          }, 2500);
+        if (request !== voiceRequestRef.current) return;
+        setIsGenerating(false);
+        if (res.transcript?.trim()) {
+          if (agentMode === "agent") await handleRunAgentTask(res.transcript);
+          else await handleSendMessage(res.transcript, true);
         } else {
-          setPetState("idle");
-          setPetMood("neutral");
+          throw new Error("No speech was detected. Please try again.");
         }
       } else {
-        setTimeout(() => {
-          setPetState("idle");
-          setPetMood("neutral");
-        }, 1000);
+        throw new Error("The agent is disconnected. Reconnect before sending voice commands.");
       }
-    } catch {
+    } catch (error) {
+      if (request !== voiceRequestRef.current) return;
       setPetState("error");
-      setTimeout(() => setPetState("idle"), 2500);
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(), conversationId: currentConversationId, role: "error",
+        content: error instanceof Error ? error.message : "Voice command failed.",
+        timestamp: new Date().toISOString(),
+      }]);
+    } finally {
+      if (request === voiceRequestRef.current) setIsGenerating(false);
     }
   };
 
@@ -836,17 +866,7 @@ export function useProtocol() {
   };
 
   const handleInterruptSpeaking = async () => {
-    setIsSpeaking(false);
-    setIsListening(true);
-    setPetState("listening");
-    setPetMood("curious");
-    try {
-      if (agentConnected) {
-        await agentClient.interruptSpeaking();
-      }
-    } catch {
-      // Offline fallback
-    }
+    await handleStartPushToTalk();
   };
 
   const handleTriggerShortcut = async () => {
@@ -866,6 +886,7 @@ export function useProtocol() {
       await handleStartPushToTalk();
     }
   };
+  voiceShortcutRef.current = handleTriggerShortcut;
 
   // Global shortcut (Ctrl+Shift+Space) for push-to-talk toggle
   useEffect(() => {
@@ -881,86 +902,20 @@ export function useProtocol() {
 
   const handleGrantPermission = async (toolCallId: string) => {
     if (!pendingPermission) return;
+    const tool = pendingPermission.tool;
+    // Close the modal and hand the decision to the orchestrator. The task is
+    // BLOCKED server-side awaiting this exact toolCallId; posting consent wakes
+    // it and the remaining task_step/task_completed events continue to arrive on
+    // the SAME SSE stream opened by handleRunAgentTask — no one-shot executeTool.
     setPendingPermission(null);
     setPetState("executing");
-    setActiveToolName(pendingPermission.tool);
-
-    setCurrentTaskStatus({
-      version: "1.0.0",
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      type: "task_status",
-      taskId: pendingPermission.taskId,
-      status: "running",
-      message: `Executing ${pendingPermission.tool}...`,
-      progress: 0.5,
-    });
+    setActiveToolName(tool);
 
     try {
-      if (agentConnected) {
-        await agentClient.submitConsent(toolCallId, true);
-        const execRes = await agentClient.executeTool({
-          version: "1.0.0",
-          id: toolCallId,
-          timestamp: new Date().toISOString(),
-          type: "tool_call",
-          taskId: pendingPermission.taskId,
-          tool: pendingPermission.tool,
-          riskLevel: pendingPermission.riskLevel,
-          arguments: pendingPermission.arguments,
-        });
-
-        setCurrentTaskStatus({
-          version: "1.0.0",
-          id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-          type: "task_status",
-          taskId: pendingPermission.taskId,
-          status: "completed",
-          message: "Action verified and executed successfully.",
-          progress: 1.0,
-        });
-        setPetState("success");
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            conversationId: currentConversationId,
-            role: "assistant",
-            content: `Tool '${pendingPermission.tool}' executed successfully. Output: ${JSON.stringify(
-              execRes.tool_result.output
-            )}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-      } else {
-        setTimeout(() => {
-          setCurrentTaskStatus({
-            version: "1.0.0",
-            id: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-            type: "task_status",
-            taskId: pendingPermission.taskId,
-            status: "completed",
-            message: "Simulation complete.",
-            progress: 1.0,
-          });
-          setPetState("success");
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              conversationId: currentConversationId,
-              role: "assistant",
-              content: `Simulated execution of ${pendingPermission.tool} complete.`,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
-        }, 800);
-      }
+      await agentClient.submitConsent(toolCallId, true);
     } catch (err: unknown) {
       setPetState("error");
-      const errMsg = err instanceof Error ? err.message : "Tool execution failed";
+      const errMsg = err instanceof Error ? err.message : "Failed to submit consent";
       setMessages((prev) => [
         ...prev,
         {
@@ -971,7 +926,6 @@ export function useProtocol() {
           timestamp: new Date().toISOString(),
         },
       ]);
-    } finally {
       setTimeout(() => {
         setActiveToolName(null);
         setPetState("idle");
@@ -982,19 +936,9 @@ export function useProtocol() {
   const handleDenyPermission = async (toolCallId: string, reason: string) => {
     setPendingPermission(null);
     setPetState("error");
-    if (agentConnected) {
-      await agentClient.submitConsent(toolCallId, false, reason).catch(() => {});
-    }
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        conversationId: currentConversationId,
-        role: "error",
-        content: `Permission denied: ${reason}`,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
+    // Denial is also just a consent decision: the waiting task fails the step
+    // cleanly and streams its own failure event. No local status faking.
+    await agentClient.submitConsent(toolCallId, false, reason).catch(() => {});
     setTimeout(() => setPetState("idle"), 2500);
   };
 
@@ -1048,6 +992,7 @@ export function useProtocol() {
     activeToolName,
     activeTask,
     agentConnected,
+    aiWarning,
     agentUrl: DEFAULT_AGENT_URL,
     settingsOpen,
     setSettingsOpen,
@@ -1069,6 +1014,8 @@ export function useProtocol() {
     handleRunAgentTask,
     handleCancelActiveTask,
     handleDismissActiveTask,
+    agentMode,
+    setAgentMode,
     microphones,
     speakers,
     selectedMicId,

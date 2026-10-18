@@ -11,7 +11,12 @@ class AgentSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="YANA_",
-        env_file=(".env", "../../.env", "../.env"),
+        env_file=(
+            ".env",
+            "../../.env",
+            "../.env",
+            str(Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "YANA" / ".env"),
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -72,10 +77,15 @@ class AgentSettings(BaseSettings):
     #   'llm'  - always use the LLM planner (falls back to rules on parse errors).
     #   'rule' - always use the deterministic rule-based planner.
     planner_mode: Literal["auto", "llm", "rule"] = "auto"
+    intent_router_enabled: bool = False
 
     # 🎤 Voice & Audio Subsystem
     stt_provider: str = "nvidia_parakeet"
     stt_model: str = "nvidia/parakeet-ctc-1.1b-asr"
+    stt_base_url: str = (
+        "https://1598d209-5e27-4d3c-8079-4751568b1081.invocation.api.nvcf.nvidia.com/v1"
+    )
+    stt_api_key: SecretStr = Field(default=SecretStr(""))
     tts_provider: str = "edge_tts"
     tts_voice: str = "en-US-AriaNeural"
 
@@ -89,7 +99,7 @@ class AgentSettings(BaseSettings):
     cartesia_base_url: str = "https://api.cartesia.ai"
 
     # Security & Policy
-    permission_mode: Literal["strict", "permissive"] = "strict"
+    permission_mode: Literal["strict", "permissive", "god"] = "strict"
     max_execution_loops: int = 10
     tool_timeout_seconds: int = 90
 
@@ -112,11 +122,22 @@ class AgentSettings(BaseSettings):
     def safe_dict(self) -> dict[str, object]:
         """Export settings with sensitive credentials redacted."""
         data = self.model_dump()
+        for key, value in data.items():
+            if isinstance(value, SecretStr):
+                data[key] = "********" if value.get_secret_value() else ""
         # Explicitly mask secrets
         if self.ai_api_key.get_secret_value():
             data["ai_api_key"] = "********"
         else:
             data["ai_api_key"] = ""
+        if self.ai_heavy_api_key.get_secret_value():
+            data["ai_heavy_api_key"] = "********"
+        else:
+            data["ai_heavy_api_key"] = ""
+        if self.stt_api_key.get_secret_value():
+            data["stt_api_key"] = "********"
+        else:
+            data["stt_api_key"] = ""
         if self.cartesia_api_key.get_secret_value():
             data["cartesia_api_key"] = "********"
         else:
