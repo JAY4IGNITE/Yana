@@ -13,7 +13,6 @@ Enforces Phase 11 multi-step controls and loop protections:
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
 from uuid import uuid4
 
 from app.config import settings
@@ -220,39 +219,46 @@ class AgentOrchestrator:
 
             planner_to_use = self.planner
 
-            # System 1 Intercept
+            # Shared task preparation
             try:
-                intent_res: dict[str, Any] = {"intent": "chat", "intent_confidence": 0.0}
-                if settings.intent_router_enabled:
-                    from app.core.executor.router import system1_router
+                from app.core.planner.base import RuleBasedPlanner
+                from app.decision.service import decision_service
 
-                    intent_res = await asyncio.to_thread(system1_router.analyze, goal)
-                logger.info(f"System 1 Routing: {intent_res}")
-
-                confidence = float(intent_res.get("intent_confidence", 0.0))
-                intent_name = str(intent_res.get("intent", ""))
-
-                if intent_name == "system_command" and confidence > 0.85:
-                    from app.core.planner.base import RuleBasedPlanner
-
+                prep = await decision_service.prepare_task(goal, mode="control", task_id=tid)
+                if prep.use_rule_planner:
                     planner_to_use = RuleBasedPlanner()
-                    logger.info("Fast-pathing system command to RuleBasedPlanner via Laya.")
-                elif intent_name == "harmful" and confidence > 0.90:
-                    err = SafeErrorPayload(
-                        code=ErrorCode.PERMISSION_ERROR,
-                        message="Task blocked by System 1 safety guardrails.",
-                        task_id=tid,
-                        retryable=False,
-                    )
-                    self.task_manager.fail_task(tid, err)
-                    await emit_status(TaskStatusEnum.FAILED, err.message, progress=0.0)
-                    return self.task_manager.get_task(tid)
             except Exception as e:
-                logger.warning(f"System 1 routing skipped: {e}")
+                logger.warning(
+                    f"Shared task preparation skipped on error, using default planner: {e}"
+                )
 
             try:
-                available_tools = self.registry.list_tools()
-                plan = await planner_to_use.create_plan(goal, available_tools, task_id=tid)
+                full_tools = self.registry.list_tools()
+                candidate_tools = (
+                    prep.candidate_tools if (prep and prep.candidate_tools) else full_tools
+                )
+
+                try:
+                    plan = await planner_to_use.create_plan(goal, candidate_tools, task_id=tid)
+                    # Widening check: did any step require tools outside candidate shortlist?
+                    candidate_names = {t["name"] for t in candidate_tools}
+                    plan_tools = {s.tool_name for s in plan.steps}
+                    if not plan_tools.issubset(candidate_names):
+                        diff = plan_tools - candidate_names
+                        logger.info(
+                            f"Task [{tid}]: Plan required tools {diff}. "
+                            "Widening to full registry replan before execution."
+                        )
+                        plan = await planner_to_use.create_plan(goal, full_tools, task_id=tid)
+                except Exception as shortlist_err:
+                    if candidate_tools != full_tools:
+                        logger.info(
+                            f"Task [{tid}]: Shortlist plan formulation failed ({shortlist_err}). "
+                            "Widening to full registry replan."
+                        )
+                        plan = await planner_to_use.create_plan(goal, full_tools, task_id=tid)
+                    else:
+                        raise
 
                 if len(plan.steps) > self.max_steps:
                     raise ValidationError(

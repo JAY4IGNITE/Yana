@@ -16,8 +16,10 @@ import {
   Power,
   RefreshCw,
   Sparkles,
+  Brain,
 } from "lucide-react";
 import { AudioDevice, agentClient, ProjectMemoryPayload } from "../../services/agentClient";
+import { LocalDecisionsSettings } from "./LocalDecisionsSettings";
 
 async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   try {
@@ -60,7 +62,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleWakeWord,
   onPurgeMemory,
 }) => {
-  const [activeTab, setActiveTab] = useState<"general" | "audio" | "memory">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "decisions" | "audio" | "memory">("general");
   const [projects, setProjects] = useState<ProjectMemoryPayload[]>([]);
   const [purgeStatus, setPurgeStatus] = useState<string | null>(null);
 
@@ -215,6 +217,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             General & Security
           </button>
           <button
+            onClick={() => setActiveTab("decisions")}
+            className={`flex-1 py-1.5 font-medium border-b-2 transition flex items-center justify-center space-x-1 ${
+              activeTab === "decisions"
+                ? "border-sky-400 text-sky-400"
+                : "border-transparent text-slate-400 hover:text-slate-300"
+            }`}
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span>Decisions</span>
+          </button>
+          <button
             onClick={() => setActiveTab("audio")}
             className={`flex-1 py-1.5 font-medium border-b-2 transition flex items-center justify-center space-x-1 ${
               activeTab === "audio"
@@ -362,6 +375,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-slate-400 font-mono">SQLite 3 (Async)</span>
             </div>
           </div>
+        ) : activeTab === "decisions" ? (
+          <LocalDecisionsSettings agentConnected={agentConnected} />
         ) : activeTab === "audio" ? (
           <div className="space-y-3 text-xs">
             {/* Microphone Selection */}

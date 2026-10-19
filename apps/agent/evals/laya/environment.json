@@ -1,0 +1,91 @@
+{
+  "hardware": {
+    "platform": "Windows-10-10.0.26300-SP0",
+    "processor": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+    "cpu_brand": "AMD64",
+    "physical_cores": 12,
+    "logical_cores": 16,
+    "cpu_freq_mhz": 2200.0,
+    "total_ram_gb": 15.65,
+    "available_ram_gb": 2.36
+  },
+  "environment": {
+    "python_version": "3.11.16",
+    "torch_version": "2.14.0+cpu",
+    "transformers_version": "5.17.0",
+    "laya_version": "0.4.11",
+    "laya_source_file": "C:\\Users\\ramuv\\Yana\\.candidate_venv\\Lib\\site-packages\\laya\\__init__.py",
+    "model_repo": "convaiinnovations/laya",
+    "model_commit": "7b928d828b7b0e022f929d9bd2e44165aa270148",
+    "cache_directory": "C:\\Users\\ramuv\\.cache\\huggingface\\hub\\models--convaiinnovations--laya"
+  },
+  "thread_benchmarks": [
+    {
+      "threads": 2,
+      "cold_load_sec": 0.036,
+      "rss_before_load_mb": 193.8,
+      "rss_after_load_mb": 194.6,
+      "rss_model_overhead_mb": 0.8,
+      "rss_peak_mb": 3040.1,
+      "iterations": 20,
+      "latency_min_ms": 609.88,
+      "latency_p50_ms": 2873.13,
+      "latency_p90_ms": 5032.22,
+      "latency_p95_ms": 10915.25,
+      "latency_max_ms": 10915.25,
+      "latency_mean_ms": 2981.7,
+      "latency_std_ms": 2355.91,
+      "sample_output_structure": {
+        "probabilities_present": true,
+        "answer_confidence_present": true,
+        "answer_confidence_sample": 0.8456,
+        "legacy_confidence_sample": 0.566
+      }
+    },
+    {
+      "threads": 4,
+      "cold_load_sec": 0.047,
+      "rss_before_load_mb": 193.6,
+      "rss_after_load_mb": 194.3,
+      "rss_model_overhead_mb": 0.7,
+      "rss_peak_mb": 3262.6,
+      "iterations": 20,
+      "latency_min_ms": 660.57,
+      "latency_p50_ms": 2170.07,
+      "latency_p90_ms": 3173.25,
+      "latency_p95_ms": 6881.29,
+      "latency_max_ms": 6881.29,
+      "latency_mean_ms": 2347.6,
+      "latency_std_ms": 1231.71,
+      "sample_output_structure": {
+        "probabilities_present": true,
+        "answer_confidence_present": true,
+        "answer_confidence_sample": 0.8456,
+        "legacy_confidence_sample": 0.566
+      }
+    },
+    {
+      "threads": 8,
+      "cold_load_sec": 0.045,
+      "rss_before_load_mb": 194.4,
+      "rss_after_load_mb": 195.2,
+      "rss_model_overhead_mb": 0.8,
+      "rss_peak_mb": 3266.4,
+      "iterations": 20,
+      "latency_min_ms": 140.43,
+      "latency_p50_ms": 390.18,
+      "latency_p90_ms": 438.1,
+      "latency_p95_ms": 2490.4,
+      "latency_max_ms": 2490.4,
+      "latency_mean_ms": 474.25,
+      "latency_std_ms": 481.13,
+      "sample_output_structure": {
+        "probabilities_present": true,
+        "answer_confidence_present": true,
+        "answer_confidence_sample": 0.8456,
+        "legacy_confidence_sample": 0.566
+      }
+    }
+  ],
+  "timestamp_utc": "2026-10-19T15:38:25Z"
+}

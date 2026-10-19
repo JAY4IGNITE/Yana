@@ -1,0 +1,175 @@
+{
+  "mode": "candidate",
+  "split": "all",
+  "overall_metrics": {
+    "total_samples": 540,
+    "accuracy": 0.3037,
+    "per_class": {
+      "routine": {
+        "support": 216,
+        "precision": 0.2764,
+        "recall": 0.412,
+        "f1": 0.3309
+      },
+      "complex": {
+        "support": 270,
+        "precision": 0.8906,
+        "recall": 0.2111,
+        "f1": 0.3413
+      },
+      "unclear": {
+        "support": 54,
+        "precision": 0.1169,
+        "recall": 0.3333,
+        "f1": 0.1731
+      }
+    },
+    "confusion_matrix": {
+      "routine": {
+        "routine": 89,
+        "complex": 6,
+        "unclear": 121
+      },
+      "complex": {
+        "routine": 198,
+        "complex": 57,
+        "unclear": 15
+      },
+      "unclear": {
+        "routine": 35,
+        "complex": 1,
+        "unclear": 18
+      }
+    },
+    "category_breakdown": {
+      "ordinary_chat": {
+        "count": 54,
+        "accuracy": 0.463
+      },
+      "exact_command": {
+        "count": 54,
+        "accuracy": 0.9815
+      },
+      "compound_command": {
+        "count": 54,
+        "accuracy": 0.1481
+      },
+      "negated_command": {
+        "count": 54,
+        "accuracy": 0.0185
+      },
+      "quoted_command": {
+        "count": 54,
+        "accuracy": 0.2037
+      },
+      "ambiguous": {
+        "count": 54,
+        "accuracy": 0.3333
+      },
+      "failure_related": {
+        "count": 54,
+        "accuracy": 0.0
+      },
+      "code_terminal": {
+        "count": 54,
+        "accuracy": 0.6296
+      },
+      "browser": {
+        "count": 54,
+        "accuracy": 0.1852
+      },
+      "files": {
+        "count": 54,
+        "accuracy": 0.0741
+      }
+    },
+    "latency_p50_ms": 391.94,
+    "latency_p95_ms": 522.86
+  },
+  "held_out_test_metrics": {
+    "total_samples": 110,
+    "accuracy": 0.3182,
+    "per_class": {
+      "routine": {
+        "support": 44,
+        "precision": 0.2923,
+        "recall": 0.4318,
+        "f1": 0.3486
+      },
+      "complex": {
+        "support": 55,
+        "precision": 0.9167,
+        "recall": 0.2,
+        "f1": 0.3284
+      },
+      "unclear": {
+        "support": 11,
+        "precision": 0.1515,
+        "recall": 0.4545,
+        "f1": 0.2273
+      }
+    },
+    "confusion_matrix": {
+      "routine": {
+        "routine": 19,
+        "complex": 1,
+        "unclear": 24
+      },
+      "complex": {
+        "routine": 40,
+        "complex": 11,
+        "unclear": 4
+      },
+      "unclear": {
+        "routine": 6,
+        "complex": 0,
+        "unclear": 5
+      }
+    },
+    "category_breakdown": {
+      "ordinary_chat": {
+        "count": 11,
+        "accuracy": 0.7273
+      },
+      "exact_command": {
+        "count": 11,
+        "accuracy": 1.0
+      },
+      "compound_command": {
+        "count": 11,
+        "accuracy": 0.1818
+      },
+      "negated_command": {
+        "count": 11,
+        "accuracy": 0.0
+      },
+      "quoted_command": {
+        "count": 11,
+        "accuracy": 0.0
+      },
+      "ambiguous": {
+        "count": 11,
+        "accuracy": 0.4545
+      },
+      "failure_related": {
+        "count": 11,
+        "accuracy": 0.0
+      },
+      "code_terminal": {
+        "count": 11,
+        "accuracy": 0.4545
+      },
+      "browser": {
+        "count": 11,
+        "accuracy": 0.1818
+      },
+      "files": {
+        "count": 11,
+        "accuracy": 0.1818
+      }
+    },
+    "latency_p50_ms": 392.02,
+    "latency_p95_ms": 423.78
+  },
+  "timestamp_utc": "2026-10-19T15:49:17Z"
+}

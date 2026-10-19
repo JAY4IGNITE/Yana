@@ -217,3 +217,163 @@ async def test_orchestrator_real_tools_pipeline() -> None:
     assert step.verified is True
     assert step.output is not None
     assert "cpu_cores" in step.output
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_exact_command_fast_path() -> None:
+    """Validate that exact supported commands automatically use RuleBasedPlanner fast-path.
+
+    Verifies that LOW risk commands complete automatically, and MEDIUM/HIGH risk commands
+    preserve consent gates (e.g. waiting_confirmation) without bypass.
+    """
+    from unittest.mock import AsyncMock
+
+    from app.tools import register_default_tools
+
+    reg = register_default_tools(ToolRegistry())
+    dummy_planner = AsyncMock()
+    orchestrator = AgentOrchestrator(
+        planner=dummy_planner,
+        tool_registry=reg,
+        task_manager=TaskManager(),
+    )
+
+    # 1. LOW risk command: completes directly
+    task = await orchestrator.run_goal("retrieve system info")
+    assert task.status == TaskStatusEnum.COMPLETED
+    assert len(task.steps) == 1
+    assert task.steps[0].tool_name == "system.get_system_info"
+    dummy_planner.create_plan.assert_not_called()
+
+    # 2. MEDIUM risk command: preserves consent gate, does NOT bypass confirmation
+    task_screenshot = await orchestrator.run_goal("take a screenshot")
+    assert task_screenshot.status == TaskStatusEnum.WAITING_CONFIRMATION
+    assert len(task_screenshot.steps) == 1
+    assert task_screenshot.steps[0].tool_name == "computer.screenshot"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_shadow_non_interference(
+    orchestrator_env: AgentOrchestrator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Validate that shadow mode evaluation does not alter plan or tool execution."""
+    from unittest.mock import AsyncMock
+
+    from app.decision.contracts import (
+        DecisionOutcome,
+        DecisionReasonCode,
+        DecisionStatus,
+        ReasoningTier,
+    )
+    from app.decision.service import decision_service
+
+    mock_outcome = DecisionOutcome(
+        request_id="test-shadow",
+        status=DecisionStatus.OK,
+        reason_code=DecisionReasonCode.NONE,
+        reasoning_tier=ReasoningTier.COMPLEX,
+        confidence=0.95,
+        answer_confidence=0.95,
+    )
+
+    mock_runtime = AsyncMock()
+    mock_runtime.mode = "shadow"
+    mock_runtime.is_ready = True
+    mock_runtime.evaluate.return_value = mock_outcome
+    monkeypatch.setattr(decision_service, "_runtime", mock_runtime)
+
+    task = await orchestrator_env.run_goal("run agent diagnostic test mock flow")
+    assert task.status == TaskStatusEnum.COMPLETED
+    assert len(task.steps) == 3
+    mock_runtime.evaluate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_worker_failure_resumes_planning(
+    orchestrator_env: AgentOrchestrator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Validate that decision worker failure/timeout falls back cleanly to ordinary planning."""
+    from unittest.mock import AsyncMock
+
+    from app.decision.service import decision_service
+
+    mock_runtime = AsyncMock()
+    mock_runtime.mode = "active"
+    mock_runtime.is_ready = True
+    mock_runtime.evaluate.side_effect = TimeoutError("Simulated worker timeout")
+    monkeypatch.setattr(decision_service, "_runtime", mock_runtime)
+
+    task = await orchestrator_env.run_goal("run agent diagnostic test mock flow")
+    assert task.status == TaskStatusEnum.COMPLETED
+    assert len(task.steps) == 3
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_compound_not_fast_pathed() -> None:
+    """Validate that compound command does not trigger exact fast path."""
+    from app.decision.service import decision_service
+
+    prep = await decision_service.prepare_task(
+        "take a screenshot and open calculator", mode="control"
+    )
+    assert prep.exact_command is None
+    assert prep.use_rule_planner is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_widening_replan_on_shortlist_failure(
+    orchestrator_env: AgentOrchestrator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Validate that if candidate tool planning fails, orchestrator widens to full replan."""
+    from app.decision.service import TaskPreparationResult, decision_service
+
+    full_tools = orchestrator_env.registry.list_tools()
+    restricted_tools = [full_tools[0]]  # only 1 tool
+
+    # Mock prepare_task to return restricted candidate_tools
+    async def mock_prep(*args, **kwargs):
+        return TaskPreparationResult(
+            candidate_tools=restricted_tools,
+        )
+
+    monkeypatch.setattr(decision_service, "prepare_task", mock_prep)
+
+    # Goal that requires mock.action, mock.wait, mock.verify
+    # First planner call with restricted_tools fails validation because steps need wait & verify
+    task = await orchestrator_env.run_goal("run agent diagnostic test mock flow")
+    assert task.status == TaskStatusEnum.COMPLETED
+    assert len(task.steps) == 3
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_widening_replan_before_partial_execution(
+    orchestrator_env: AgentOrchestrator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure no partial plan executes before a necessary full-registry replan."""
+    from app.decision.service import TaskPreparationResult, decision_service
+
+    full_tools = orchestrator_env.registry.list_tools()
+    executed_tools: list[str] = []
+
+    # Track executed tools on mock action
+    original_exec = orchestrator_env.registry.get("mock.action").execute
+
+    async def tracking_exec(args):
+        executed_tools.append("mock.action")
+        return await original_exec(args)
+
+    monkeypatch.setattr(orchestrator_env.registry.get("mock.action"), "execute", tracking_exec)
+
+    # Provide candidate tools missing mock.verify
+    candidate_tools = [t for t in full_tools if t["name"] != "mock.verify"]
+
+    async def mock_prep(*args, **kwargs):
+        return TaskPreparationResult(candidate_tools=candidate_tools)
+
+    monkeypatch.setattr(decision_service, "prepare_task", mock_prep)
+
+    task = await orchestrator_env.run_goal("run agent diagnostic test mock flow")
+    assert task.status == TaskStatusEnum.COMPLETED
+    # All 3 steps executed in the full replan
+    assert len(task.steps) == 3
+    assert "mock.action" in executed_tools

@@ -46,6 +46,13 @@ class ToolRegistry:
         """List schemas of all registered tools (alias for list)."""
         return self.list()
 
+    def list_candidates(
+        self, names: set[str] | builtins.list[str]
+    ) -> builtins.list[dict[str, Any]]:
+        """List schemas of registered tools matching the candidate names."""
+        name_set = set(names)
+        return [tool.get_schema() for tool in self._tools.values() if tool.name in name_set]
+
     def validate(self, name: str, arguments: dict[str, Any]) -> BaseTool:
         """Verify tool exists and arguments comply with schema and security boundaries."""
         resolved_name = self._aliases.get(name, name)

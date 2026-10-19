@@ -1,9 +1,7 @@
-"""Tiered AI Router coordinating Local LLM (Ollama), Heavy Reasoning (NVIDIA NIM),
-and Cloud Fallback.
-"""
-
 import asyncio
+import contextvars
 from collections.abc import AsyncGenerator
+from contextlib import contextmanager
 
 from app.ai.base import AIProvider
 from app.ai.models import Message
@@ -11,6 +9,21 @@ from app.ai.openai_provider import OpenAICompatibleProvider
 from app.config import settings
 from app.errors import ConfigurationError
 from app.logger import logger
+
+# Request-scoped routing hint context variable (e.g. 'heavy', 'local', or None)
+current_routing_hint: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "current_routing_hint", default=None
+)
+
+
+@contextmanager
+def scoped_routing_hint(hint: str | None):
+    """Context manager setting a request-scoped provider tier hint safely across async tasks."""
+    token = current_routing_hint.set(hint)
+    try:
+        yield
+    finally:
+        current_routing_hint.reset(token)
 
 
 class TieredAIRouter(AIProvider):
@@ -135,8 +148,10 @@ class TieredAIRouter(AIProvider):
         ]
         return any(sig in last_content for sig in heavy_signals)
 
-    async def select_provider(self, messages: list[Message]) -> tuple[AIProvider, str]:
-        """Select optimal provider based on query complexity and tier availability."""
+    async def select_provider(
+        self, messages: list[Message], hint: str | None = None
+    ) -> tuple[AIProvider, str]:
+        """Select optimal provider based on query complexity, scoped hint, and tier availability."""
         forced = {
             "heavy": (self._heavy_provider, "nvidia-heavy"),
             "local": (self._local_provider, "ollama-local"),
@@ -150,6 +165,7 @@ class TieredAIRouter(AIProvider):
             self._last_active_model = getattr(provider, "model", "unknown")
             return provider, tier
 
+        effective_hint = hint or current_routing_hint.get()
         choice: tuple[AIProvider, str]
         requires_heavy = self._is_heavy_reasoning_required(messages)
         ollama_available = await self._check_ollama_status()
@@ -157,6 +173,12 @@ class TieredAIRouter(AIProvider):
         if requires_heavy and self._heavy_provider:
             logger.info("TieredAIRouter: routing to NVIDIA NIM for heavy reasoning/planning.")
             choice = (self._heavy_provider, "nvidia-heavy")
+        elif effective_hint == "heavy" and self._heavy_provider:
+            logger.info("TieredAIRouter: routing to NVIDIA NIM based on local decision hint.")
+            choice = (self._heavy_provider, "nvidia-heavy")
+        elif effective_hint == "local" and ollama_available and self._local_provider:
+            logger.info("TieredAIRouter: routing to local Ollama based on local decision hint.")
+            choice = (self._local_provider, "ollama-local")
         elif ollama_available and self._local_provider:
             logger.info("TieredAIRouter: routing to local Ollama.")
             choice = (self._local_provider, "ollama-local")

@@ -107,3 +107,103 @@ def test_openai_provider_empty_messages_validation() -> None:
     provider = OpenAICompatibleProvider(api_key="test-key")
     with pytest.raises(ValidationError):
         provider._format_messages([], system_prompt=None)
+
+
+@pytest.mark.asyncio
+async def test_router_scoped_hint_routes_in_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Validate that in auto mode, accepted hints route to the requested provider tier."""
+    from unittest.mock import AsyncMock
+
+    from app.ai.router import TieredAIRouter, scoped_routing_hint
+
+    router = TieredAIRouter()
+    mock_local = AsyncMock()
+    mock_local.model = "llama-local"
+    mock_heavy = AsyncMock()
+    mock_heavy.model = "nim-heavy"
+
+    router._local_provider = mock_local
+    router._heavy_provider = mock_heavy
+    monkeypatch.setattr(router, "_check_ollama_status", AsyncMock(return_value=True))
+    router.routing_mode = "auto"
+
+    msg = [Message(role=MessageRole.USER, content="Hello simple query")]
+
+    # 1. With heavy hint: routes to heavy
+    with scoped_routing_hint("heavy"):
+        prov, tier = await router.select_provider(msg)
+        assert tier == "nvidia-heavy"
+        assert prov == mock_heavy
+
+    # 2. With local hint: routes to local
+    with scoped_routing_hint("local"):
+        prov, tier = await router.select_provider(msg)
+        assert tier == "ollama-local"
+        assert prov == mock_local
+
+    # 3. Without hint: routes to local by baseline
+    prov, tier = await router.select_provider(msg)
+    assert tier == "ollama-local"
+
+
+@pytest.mark.asyncio
+async def test_router_pinned_mode_overrides_hints() -> None:
+    """Validate that pinned routing mode strictly overrides local decision hints."""
+    from unittest.mock import AsyncMock
+
+    from app.ai.router import TieredAIRouter, scoped_routing_hint
+
+    router = TieredAIRouter()
+    mock_local = AsyncMock()
+    mock_local.model = "llama-local"
+    mock_heavy = AsyncMock()
+    mock_heavy.model = "nim-heavy"
+
+    router._local_provider = mock_local
+    router._heavy_provider = mock_heavy
+    router._is_ollama_ready = True
+    router.routing_mode = "local"  # Pinned to local
+
+    msg = [Message(role=MessageRole.USER, content="Complex multi-step request")]
+
+    with scoped_routing_hint("heavy"):
+        prov, tier = await router.select_provider(msg)
+        # Must stay local because routing_mode is pinned to local
+        assert tier == "ollama-local"
+        assert prov == mock_local
+
+
+@pytest.mark.asyncio
+async def test_router_scoped_hint_concurrency_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Validate that concurrent async tasks maintain isolated routing hints without cross-talk."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app.ai.router import TieredAIRouter, scoped_routing_hint
+
+    router = TieredAIRouter()
+    mock_local = AsyncMock()
+    mock_local.model = "llama-local"
+    mock_heavy = AsyncMock()
+    mock_heavy.model = "nim-heavy"
+
+    router._local_provider = mock_local
+    router._heavy_provider = mock_heavy
+    monkeypatch.setattr(router, "_check_ollama_status", AsyncMock(return_value=True))
+    router.routing_mode = "auto"
+
+    msg = [Message(role=MessageRole.USER, content="Hello test query")]
+
+    async def run_task(hint: str, expected_tier: str) -> None:
+        with scoped_routing_hint(hint):
+            await asyncio.sleep(0.01)  # Context switch opportunity
+            _, tier = await router.select_provider(msg)
+            assert tier == expected_tier
+
+    # Concurrently execute tasks requesting opposing tiers
+    await asyncio.gather(
+        run_task("heavy", "nvidia-heavy"),
+        run_task("local", "ollama-local"),
+        run_task("heavy", "nvidia-heavy"),
+        run_task("local", "ollama-local"),
+    )

@@ -749,6 +749,62 @@ export class AgentClient {
     }
     return res.json();
   }
+
+  async getDecisionStatus(): Promise<DecisionStatusPayload> {
+    const res = await fetch(`${this.baseUrl}/decision/status`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch decision status: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async setDecisionMode(mode: "off" | "shadow" | "active"): Promise<{ status: string; mode: string; state: string }> {
+    const res = await fetch(`${this.baseUrl}/decision/mode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `Failed to set decision mode: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async setupDecisionModel(): Promise<DecisionSetupResponse> {
+    const res = await fetch(`${this.baseUrl}/decision/setup`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `Failed to setup decision model: ${res.status}`);
+    }
+    return res.json();
+  }
+}
+
+export interface DecisionStatusPayload {
+  state: string;
+  mode: string;
+  is_ready: boolean;
+  threads: number;
+  model_commit?: string | null;
+  active_permitted: boolean;
+  calibration_status: string;
+  telemetry_summary: {
+    total_recorded: number;
+    tier_distribution: Record<string, number>;
+    status_distribution: Record<string, number>;
+    avg_latency_ms: number;
+  };
+}
+
+export interface DecisionSetupResponse {
+  success: boolean;
+  message: string;
+  disk_free_gb: number;
+  model_dir?: string | null;
+  model_commit?: string | null;
 }
 
 export interface MemoryItemPayload {

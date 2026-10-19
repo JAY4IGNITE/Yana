@@ -30,11 +30,24 @@ class MemoryManager:
         self,
         db: DatabaseManager | None = None,
         strict_privacy: bool = False,
+        vector_store: Any | None = None,
     ) -> None:
         self.db = db or db_manager
         self.strict_privacy = strict_privacy
+        self._vector_store = vector_store
         # Temporary in-memory working context
         self._temp_context: dict[str, dict[str, Any]] = {}
+
+    @property
+    def vector_store(self) -> Any | None:
+        if self._vector_store is not None:
+            return self._vector_store
+        try:
+            from app.memory.vector_store import vector_store
+
+            return vector_store
+        except Exception:
+            return None
 
     # =========================================================================
     # Tier 1: Temporary Context (Working Memory)
@@ -136,6 +149,22 @@ class MemoryManager:
             await conn.commit()
 
         logger.info(f"Memory created: [{item.memory_type.value}] '{item.key}' ({item.id})")
+
+        if memory_type != MemoryType.TEMPORARY and self.vector_store:
+            try:
+                scope = "session" if session_id else "user"
+                await self.vector_store.add_memory(
+                    key=item.key,
+                    content=item.content,
+                    category=item.category.value,
+                    metadata=item.metadata,
+                    memory_id=item.id,
+                    scope=scope,
+                    session_id=item.session_id,
+                )
+            except Exception as e:
+                logger.debug(f"Vector store indexing failed for memory {item.id}: {e}")
+
         return item
 
     async def get_memory(self, memory_id: str) -> MemoryItem | None:
@@ -305,6 +334,21 @@ class MemoryManager:
             )
             await conn.commit()
 
+        if self.vector_store and new_content:
+            try:
+                scope = "session" if existing.session_id else "user"
+                await self.vector_store.add_memory(
+                    key=existing.key,
+                    content=new_content,
+                    category=existing.category.value,
+                    metadata=new_meta,
+                    memory_id=memory_id,
+                    scope=scope,
+                    session_id=existing.session_id,
+                )
+            except Exception as e:
+                logger.debug(f"Vector store update failed for memory {memory_id}: {e}")
+
         return await self.get_memory(memory_id)
 
     async def forget_memory(self, memory_id: str) -> bool:
@@ -315,6 +359,11 @@ class MemoryManager:
             deleted = cursor.rowcount > 0
             if deleted:
                 logger.info(f"Memory forgotten: {memory_id}")
+                if self.vector_store:
+                    try:
+                        await self.vector_store.delete_memory(memory_id)
+                    except Exception as e:
+                        logger.debug(f"Vector store delete failed for {memory_id}: {e}")
             return deleted
 
     async def forget_by_key(self, key: str, category: MemoryCategory | None = None) -> int:
@@ -365,6 +414,13 @@ class MemoryManager:
             await conn.commit()
             count = cursor.rowcount
             logger.info(f"Bulk forgotten {count} memories.")
+
+            if count > 0 and self.vector_store and session_id is not None:
+                try:
+                    await self.vector_store.delete_by_session(session_id)
+                except Exception as e:
+                    logger.debug(f"Vector store session purge failed for {session_id}: {e}")
+
             return count
 
     # =========================================================================
