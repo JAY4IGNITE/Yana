@@ -210,14 +210,83 @@ class HealthMonitor:
                 message=f"Browser subsystem check failed: {e}",
             )
 
+    async def check_decision(self) -> SubsystemHealth:
+        """Check optional local decision layer status."""
+        try:
+            from app.decision.policy import CalibrationManager
+            from app.decision.runtime import RuntimeState, decision_runtime
+            from app.decision.telemetry import decision_telemetry
+
+            state = decision_runtime.state
+            mode = decision_runtime.mode
+            threads = decision_runtime.threads
+            summary = decision_telemetry.get_summary()
+
+            active_permitted, cal_reason = CalibrationManager.is_active_mode_permitted(
+                decision_runtime.model_commit
+            )
+
+            details: dict[str, Any] = {
+                "decisionState": state.value,
+                "mode": mode,
+                "threads": threads,
+                "modelCommit": decision_runtime.model_commit,
+                "activePermitted": active_permitted,
+                "calibrationStatus": cal_reason,
+                "telemetrySummary": summary,
+            }
+
+            if state == RuntimeState.DISABLED:
+                return SubsystemHealth(
+                    status="standby",
+                    message="Local decisions disabled",
+                    details=details,
+                )
+            elif state == RuntimeState.NOT_INSTALLED:
+                return SubsystemHealth(
+                    status="standby",
+                    message="Local decision runtime not installed",
+                    details=details,
+                )
+            elif state == RuntimeState.MODEL_MISSING:
+                return SubsystemHealth(
+                    status="standby",
+                    message="Decision model checkpoint not provisioned",
+                    details=details,
+                )
+            elif state == RuntimeState.READY:
+                return SubsystemHealth(
+                    status="healthy",
+                    message="Local decision worker ready",
+                    details=details,
+                )
+            elif state == RuntimeState.STARTING:
+                return SubsystemHealth(
+                    status="standby",
+                    message="Local decision worker starting",
+                    details=details,
+                )
+            else:
+                return SubsystemHealth(
+                    status="degraded",
+                    message=f"Local decision worker degraded: {state.value}",
+                    details=details,
+                )
+        except Exception as e:
+            return SubsystemHealth(
+                status="standby",
+                message=f"Local decision check failed: {e}",
+            )
+
     async def get_system_health(self) -> SystemHealthReport:
-        """Aggregate health across all 6 monitored subsystems."""
+        """Aggregate health across all monitored subsystems."""
         desktop_h = await self.check_desktop()
         agent_h = await self.check_agent()
         ai_h = await self.check_ai_provider()
         db_h = await self.check_database()
         voice_h = await self.check_voice()
         browser_h = await self.check_browser()
+        decision_h = await self.check_decision()
 
         subsystems = {
             "desktop": desktop_h,
@@ -226,6 +295,7 @@ class HealthMonitor:
             "database": db_h,
             "voice": voice_h,
             "browser": browser_h,
+            "decision": decision_h,
         }
 
         # Determine overall status

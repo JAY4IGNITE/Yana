@@ -41,9 +41,27 @@ class CancelTaskRequest(BaseModel):
 @router.post("/plan", response_model=dict[str, Any])
 async def plan_goal(req: PlanRequest) -> dict[str, Any]:
     """Formulate and validate an execution plan without running it."""
-    planner = agent_orchestrator.planner
-    available_tools = registry.list_tools()
-    plan: Plan = await planner.create_plan(req.goal, available_tools)
+    from app.core.planner.base import RuleBasedPlanner
+    from app.decision.service import decision_service
+
+    prep = await decision_service.prepare_task(req.goal, mode="control")
+    planner = RuleBasedPlanner() if prep.use_rule_planner else agent_orchestrator.planner
+    full_tools = registry.list_tools()
+    candidate_tools = prep.candidate_tools if (prep and prep.candidate_tools) else full_tools
+
+    try:
+        plan: Plan = await planner.create_plan(req.goal, candidate_tools)
+        if candidate_tools != full_tools:
+            candidate_names = {t["name"] for t in candidate_tools}
+            plan_tools = {s.tool_name for s in plan.steps}
+            if not plan_tools.issubset(candidate_names):
+                plan = await planner.create_plan(req.goal, full_tools)
+    except Exception:
+        if candidate_tools != full_tools:
+            plan = await planner.create_plan(req.goal, full_tools)
+        else:
+            raise
+
     task_manager.create_task(goal=plan.goal, task_id=plan.task_id)
     task_manager.set_plan(plan.task_id, plan)
     return {

@@ -77,43 +77,26 @@ class RuleBasedPlanner(BasePlanner):
         if settings.ai_provider != "mock":
             # Offline recovery must not invent filenames, coordinates, or content,
             # or quietly execute only the first action of a compound request.
-            commands: list[tuple[str, str, dict[str, Any]]] = [
-                (
-                    r"(?:show |get |check )?(?:system info|system telemetry|specs)",
-                    "system.get_system_info",
-                    {},
-                ),
-                (r"(?:take (?:a )?)?screenshot|capture screen", "computer.screenshot", {}),
-                (r"(?:show |get )?(?:active|foreground) window", "computer.get_active_window", {}),
-                (
-                    r"(?:open|launch) (?:app(?:lication)? )?(?P<app_name>[\w.-]+)",
-                    "system.open_application",
-                    {},
-                ),
-                (r"(?:read|inspect) file \"(?P<path>[^\"]+)\"", "filesystem.read", {}),
-                (
-                    r"(?:create directory|create folder|mkdir) \"(?P<path>[^\"]+)\"",
-                    "filesystem.create_directory",
-                    {},
-                ),
-            ]
-            for pattern, tool_name, arguments in commands:
-                match = re.fullmatch(pattern, goal.strip(), re.IGNORECASE)
-                if match:
-                    plan = Plan(
-                        task_id=tid,
-                        goal=goal,
-                        steps=[
-                            PlanStep(
-                                step_number=1,
-                                tool_name=tool_name,
-                                description=goal,
-                                arguments={**arguments, **match.groupdict()},
-                            )
-                        ],
-                    )
-                    self.validate_plan(plan, available_tools)
-                    return plan
+            from app.decision.policy import match_exact_supported_command
+
+            exact_match = match_exact_supported_command(goal, mode="control")
+            if exact_match:
+                tool_name, arguments = exact_match
+                plan = Plan(
+                    task_id=tid,
+                    goal=goal,
+                    steps=[
+                        PlanStep(
+                            step_number=1,
+                            tool_name=tool_name,
+                            description=goal,
+                            arguments=arguments,
+                        )
+                    ],
+                )
+                self.validate_plan(plan, available_tools)
+                return plan
+
             raise ValidationError(
                 "AI planning is unavailable for this request. Check your AI provider "
                 "credentials and model access, then retry. Basic commands such as "

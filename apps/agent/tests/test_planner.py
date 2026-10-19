@@ -164,3 +164,70 @@ async def test_rule_based_planner_browser_triggers(
     plan_open = await planner.create_plan("open browser", available_tools)
     assert len(plan_open.steps) == 1
     assert plan_open.steps[0].tool_name == "browser.open"
+
+
+@pytest.mark.asyncio
+async def test_exact_command_selection_policy():
+    from app.decision.policy import match_exact_supported_command
+
+    # 1. Valid exact commands in control mode
+    assert match_exact_supported_command("show system info", mode="control") == (
+        "system.get_system_info",
+        {},
+    )
+    assert match_exact_supported_command("take a screenshot", mode="control") == (
+        "computer.screenshot",
+        {},
+    )
+    assert match_exact_supported_command("open app notepad.exe", mode="control") == (
+        "system.open_application",
+        {"app_name": "notepad.exe"},
+    )
+    assert match_exact_supported_command('read file "C:\\notes.txt"', mode="control") == (
+        "filesystem.read",
+        {"path": "C:\\notes.txt"},
+    )
+
+    # 2. Chat mode must not match exact commands (preserves Chat boundary)
+    assert match_exact_supported_command("open app notepad.exe", mode="chat") is None
+    assert match_exact_supported_command("show system info", mode="chat") is None
+
+    # 3. Compound commands must be rejected (no partial execution)
+    assert (
+        match_exact_supported_command("open app notepad.exe and write a summary", mode="control")
+        is None
+    )
+    assert (
+        match_exact_supported_command("take a screenshot, then open paint", mode="control") is None
+    )
+    assert match_exact_supported_command("show system info; open calc.exe", mode="control") is None
+
+    # 4. Negated commands must be rejected
+    assert match_exact_supported_command("don't open app notepad.exe", mode="control") is None
+    assert match_exact_supported_command("do not take a screenshot", mode="control") is None
+    assert match_exact_supported_command("never execute open app calc.exe", mode="control") is None
+
+    # 5. Quoted meta-questions must be rejected
+    assert (
+        match_exact_supported_command('what does "open app notepad.exe" do?', mode="control")
+        is None
+    )
+    assert match_exact_supported_command('explain "take a screenshot"', mode="control") is None
+
+
+@pytest.mark.asyncio
+async def test_rule_based_planner_rejects_compounds_in_real_provider_mode(
+    available_tools: list[dict[str, Any]], monkeypatch
+) -> None:
+    from app.config import settings
+    from app.errors import ValidationError
+
+    monkeypatch.setattr(settings, "ai_provider", "nvidia")
+    planner = RuleBasedPlanner()
+
+    # Compound request must raise ValidationError, never executing only the first action
+    with pytest.raises(ValidationError):
+        await planner.create_plan("open app notepad.exe and write my secret notes", available_tools)
+
+    with pytest.raises(ValidationError):
+        await planner.create_plan("don't open app notepad.exe", available_tools)

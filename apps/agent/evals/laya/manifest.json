@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "total_cases": 540,
+  "cases_sha256": "bafda6dcbf91ba0962d043a38cf59d80cef0f86acdc6838691edde50c54a918e",
+  "split_counts": {
+    "train": 320,
+    "calibration": 110,
+    "test": 110
+  },
+  "category_counts": {
+    "ordinary_chat": 54,
+    "exact_command": 54,
+    "compound_command": 54,
+    "negated_command": 54,
+    "quoted_command": 54,
+    "ambiguous": 54,
+    "failure_related": 54,
+    "code_terminal": 54,
+    "browser": 54,
+    "files": 54
+  },
+  "reasoning_tier_counts": {
+    "routine": 216,
+    "complex": 270,
+    "unclear": 54
+  },
+  "splits": {
+    "train": {
+      "description": "Development and exploratory analysis split",
+      "count": 320
+    },
+    "calibration": {
+      "description": "Temperature and abstention threshold tuning",
+      "count": 110
+    },
+    "test": {
+      "description": "Frozen held-out evaluation split",
+      "count": 110
+    }
+  },
+  "provenance": "Synthesized from reviewed YANA system tasks, command parser rules, and desktop assistant interaction scenarios with distinct semantic categories."
+}

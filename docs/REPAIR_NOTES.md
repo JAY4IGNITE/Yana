@@ -14,15 +14,17 @@ The repair connects the desktop controls to actual agent and audio operations, r
 - Settings and task results fit the 380 × 540 desktop window. Wake-word detection and automatic updates report their unavailable state.
 - Browser automation falls back to installed Edge/Chrome when Playwright Chromium is absent. Closed browser windows and contexts recover, concurrent initialization shares one session, and shutdown closes the owned browser session.
 - Settings exposes Restart while connected, prevents duplicate restart requests, and shows native errors or browser-preview instructions.
+- Local Decision Layer (Laya): Process-isolated 421M non-autoregressive decision worker evaluates query routing and provider tiering without cloud latency. Operates in off/shadow/active modes with strict calibration gates, privacy-redacted telemetry, and zero PC-action execution rights.
+- Desktop Settings includes a dedicated "Local Decisions" tab exposing runtime states (`ready`, `starting`, `degraded`, `model_missing`, `not_installed`, `disabled`), explicit model provisioning with 3GB disk check, and mode controls.
 
 ## Verified paths
 
-- Python regression suite: 285 passing tests, including nine new browser initialization, recovery, and shutdown regressions.
-- Frontend regression suite: 63 passing tests; TypeScript and Vite build pass.
-- Rust suite: 14 passing tests, including owned process-tree shutdown.
+- Python regression suite: 351 passing tests across memory retrieval, decision runtime, candidate shortlisting, widening replan, worker isolation, calibration policy, telemetry, health, orchestrator, and chat routes.
+- Frontend regression suite: 68 passing tests (14 test files), including `LocalDecisionsSettings.test.tsx` (5 passed) and `MemorySettings.test.tsx` (2 passed); TypeScript and Vite build pass.
+- Rust suite: 16 passing tests across protocol, process supervision, distribution, and circuit breaker.
 - Chromium: read-only system-information task, visible output, accessible composer at native window size, Settings restart feedback, audio settings, synthetic microphone recording, WAV upload, and transcript-to-task routing. No browser page errors.
 - Native release runtime: bundled service startup, automatic recovery after terminating its own test service, and service shutdown when the desktop window closes. Tests use temporary storage and mock providers.
-- Frozen Python executable: startup, a real read-only system-information task, browser navigation/reading with no developer Chromium cache, and process cleanup pass on an isolated port with temporary storage and mock AI providers. The standard bundle is 90,915,352 bytes after excluding optional Laya/Torch dependencies. First launch can take longer while Windows scans and unpacks the executable.
+- Frozen Python executable: startup, a real read-only system-information task, browser navigation/reading with no developer Chromium cache, and process cleanup pass on an isolated port with temporary storage and mock AI providers. The standard bundle is 90,529,877 bytes (86.34 MB) with decision subsystem health and status endpoints verified (`scripts/packaged_agent_smoke.py`).
 - Final Windows NSIS installer build succeeds: `apps/desktop/src-tauri/target/release/bundle/nsis/YANA_0.1.0_x64-setup.exe` (85,725,188 bytes). SHA-256: `97B853D5F62BF5EE47CCEA3DEB3194592D72B1AFB6CB8E3C968747E5CD53ACF9`. This verifies packaging, not installation on a clean machine.
 
 ## Remaining validation

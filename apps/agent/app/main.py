@@ -1,5 +1,15 @@
 """Main Application Entrypoint for YANA Agent."""
 
+import sys
+
+# Fast-path for isolated decision worker subprocess: avoids importing web framework
+if "--decision-worker" in sys.argv:
+    from app.decision.worker import run_worker_loop
+
+    run_worker_loop()
+    sys.exit(0)
+
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -15,6 +25,7 @@ from app.api.conversation_routes import (
 from app.api.conversation_routes import (
     router as conversation_router,
 )
+from app.api.decision_routes import router as decision_router
 from app.api.memory_routes import router as memory_router
 from app.api.routes import router
 from app.api.voice_routes import router as voice_router
@@ -39,6 +50,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await db_manager.initialize()
     # Register default baseline tools
     register_default_tools()
+
+    # Initialize supervised decision worker non-blockingly if enabled
+    from app.decision.runtime import decision_runtime
+
+    decision_runtime.mode = settings.decision_mode
+    decision_runtime.threads = settings.decision_threads
+    decision_runtime.timeout_ms = settings.decision_timeout_ms
+    if settings.decision_mode != "off":
+        asyncio.create_task(decision_runtime.start())
+
     duration = time.perf_counter() - start_time
     performance_monitor.record_startup_time(duration)
     logger.info(f"YANA Agent startup complete in {duration:.4f}s.")
@@ -46,6 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         logger.info("Shutting down YANA Agent services...")
+        await decision_runtime.stop()
         await browser_session.close_session()
 
 
@@ -128,6 +150,7 @@ app.include_router(conversations_router)
 app.include_router(agent_router)
 app.include_router(voice_router)
 app.include_router(memory_router)
+app.include_router(decision_router)
 
 
 if __name__ == "__main__":

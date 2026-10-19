@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "model_revision": "7b928d828b7b0e022f929d9bd2e44165aa270148",
+  "cases_sha256": "bafda6dcbf91ba0962d043a38cf59d80cef0f86acdc6838691edde50c54a918e",
+  "generated_at": "2026-10-19T16:29:43Z",
+  "thresholds": {
+    "complex_min_confidence": 0.5,
+    "routine_min_confidence": 0.65,
+    "abstain_min_confidence": 0.55
+  },
+  "calibration": {
+    "cases_count": 110,
+    "brier_score": 0.284,
+    "ece": 0.2528,
+    "operating_metrics": {
+      "total": 110,
+      "decided": 61,
+      "abstained": 49,
+      "abstain_rate": 0.4455,
+      "accuracy": 0.3279,
+      "complex_precision": 1.0,
+      "complex_recall": 0.1667
+    }
+  },
+  "held_out_test": {
+    "cases_count": 110,
+    "brier_score": 0.2939,
+    "ece": 0.2699,
+    "operating_metrics": {
+      "total": 110,
+      "decided": 52,
+      "abstained": 58,
+      "abstain_rate": 0.5273,
+      "accuracy": 0.2885,
+      "complex_precision": 1.0,
+      "complex_recall": 0.1667
+    }
+  }
+}

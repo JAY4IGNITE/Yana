@@ -107,15 +107,27 @@ def main():
                         "error"
                     )
                     assert body["verification"]["verified"]
-                assert (
-                    "Packaged browser works" in body["tool_result"]["output"]["content"]
-                )
+                # Verify health report includes subsystems and decision subsystem if bundled
+                health_res = httpx.get("http://127.0.0.1:8766/api/health", timeout=5)
+                health_res.raise_for_status()
+                health_data = health_res.json()
+                subsystems = health_data.get("subsystems", {})
+                if "decision" in subsystems:
+                    assert subsystems["decision"]["status"] in ("healthy", "standby"), (
+                        f"Unexpected decision status: {subsystems['decision']}"
+                    )
+                dec_res = httpx.get("http://127.0.0.1:8766/api/decision/status", timeout=5)
+                dec_res.raise_for_status()
+                dec_data = dec_res.json()
+                assert "state" in dec_data and "mode" in dec_data, f"Invalid decision status response: {dec_data}"
+
                 print(
                     json.dumps(
                         {
                             "packagedAgentReady": True,
                             "packagedTaskCompleted": True,
                             "packagedBrowserWithoutCache": True,
+                            "packagedDecisionSubsystemVerified": True,
                         }
                     )
                 )

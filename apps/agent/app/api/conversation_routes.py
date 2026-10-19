@@ -1,5 +1,6 @@
 """Conversation and Streaming API routes for YANA."""
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -129,7 +130,22 @@ async def stream_conversation(
     # 2. Fetch history for context
     history = await conversation_repository.get_messages(req.conversation_id, limit=20)
 
-    # 3. Stream generator
+    # 3. Decision intake on original user text (not tool-filled prompts)
+    # In shadow/background mode, this runs concurrently so the first token is never delayed.
+    from app.decision.service import decision_service
+
+    decision_task: asyncio.Task | None = None
+    if decision_service._runtime.is_ready and decision_service._runtime.mode != "off":
+        decision_task = asyncio.create_task(
+            decision_service.prepare_conversation(
+                text=req.content,
+                session_id=session_id,
+                mode="chat",
+                source="typed",
+            )
+        )
+
+    # 4. Stream generator
     async def sse_event_generator() -> AsyncGenerator[str, None]:
         accumulated_chunks: list[str] = []
         assistant_msg_id = str(uuid4())
@@ -161,6 +177,22 @@ async def stream_conversation(
             full_response = "".join(accumulated_chunks)
             active_provider = getattr(provider, "active_tier", None) or settings.ai_provider
             active_model = getattr(provider, "active_model", None) or settings.ai_model
+
+            meta_extra: dict[str, Any] = {}
+            if decision_task is not None and decision_task.done():
+                try:
+                    dec_res = decision_task.result()
+                    if dec_res:
+                        meta_extra["decision"] = {
+                            "status": dec_res.status.value,
+                            "reasoning_tier": dec_res.reasoning_tier.value
+                            if dec_res.reasoning_tier
+                            else None,
+                            "confidence": dec_res.answer_confidence,
+                        }
+                except Exception as ex:
+                    logger.debug(f"Could not retrieve conversation decision result: {ex}")
+
             assistant_msg = Message(
                 id=assistant_msg_id,
                 conversation_id=req.conversation_id,
@@ -170,6 +202,7 @@ async def stream_conversation(
                     provider=active_provider,
                     model=active_model,
                     is_streaming=False,
+                    extra=meta_extra,
                 ),
             )
             if full_response.strip():
@@ -275,10 +308,31 @@ async def chat_message(req: ChatRequest) -> ChatResponse:
     # 2. Fetch history for context
     history = await conversation_repository.get_messages(req.conversation_id, limit=20)
 
+    # Optional local decision intake on original user text
+    from app.decision.service import decision_service
+
+    decision_outcome = None
+    if decision_service._runtime.is_ready and decision_service._runtime.mode != "off":
+        try:
+            decision_outcome = await decision_service.prepare_conversation(
+                text=clean_msg,
+                session_id=req.conversation_id,
+                mode="chat",
+                source="typed",
+            )
+        except Exception as e:
+            logger.debug(f"Chat decision evaluation skipped on error: {e}")
+
     # 3. Request LLM completion from Ollama
+    effective_system_prompt = settings.ai_system_prompt
+    if decision_outcome and decision_outcome.memory_context_prompt:
+        effective_system_prompt = (
+            f"{settings.ai_system_prompt}\n\n{decision_outcome.memory_context_prompt}"
+        )
+
     ai_response = await provider.send_message(
         messages=history,
-        system_prompt=settings.ai_system_prompt,
+        system_prompt=effective_system_prompt,
     )
 
     # 4. Save assistant response to conversation history.
@@ -296,6 +350,16 @@ async def chat_message(req: ChatRequest) -> ChatResponse:
         or (resp_meta.model if resp_meta else None)
         or getattr(provider, "model", settings.ai_model)
     )
+    meta_extra: dict[str, Any] = {}
+    if decision_outcome:
+        meta_extra["decision"] = {
+            "status": decision_outcome.status.value,
+            "reasoning_tier": decision_outcome.reasoning_tier.value
+            if decision_outcome.reasoning_tier
+            else None,
+            "confidence": decision_outcome.answer_confidence,
+        }
+
     assistant_msg = Message(
         conversation_id=req.conversation_id,
         role=MessageRole.ASSISTANT,
@@ -304,6 +368,7 @@ async def chat_message(req: ChatRequest) -> ChatResponse:
             provider=resolved_provider,
             model=resolved_model,
             is_streaming=False,
+            extra=meta_extra,
         ),
     )
     await conversation_repository.add_message(assistant_msg)

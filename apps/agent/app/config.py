@@ -79,6 +79,14 @@ class AgentSettings(BaseSettings):
     planner_mode: Literal["auto", "llm", "rule"] = "auto"
     intent_router_enabled: bool = False
 
+    # 🧠 Local Laya Decision Layer
+    decision_mode: Literal["off", "shadow", "active"] = "off"
+    decision_threads: int = 4
+    decision_timeout_ms: int = 2000
+    decision_cache_dir: str | None = None
+    decision_tool_candidates_enabled: bool = True
+    decision_memory_filtering_enabled: bool = False
+
     # 🎤 Voice & Audio Subsystem
     stt_provider: str = "nvidia_parakeet"
     stt_model: str = "nvidia/parakeet-ctc-1.1b-asr"
@@ -106,6 +114,10 @@ class AgentSettings(BaseSettings):
     def model_post_init(self, __context: Any) -> None:
         """Enforce production security invariants upon settings initialization."""
         super().model_post_init(__context)
+        # Migrate legacy YANA_INTENT_ROUTER_ENABLED to decision_mode if not explicitly set
+        if self.intent_router_enabled and self.decision_mode == "off":
+            self.decision_mode = "shadow"
+
         if self.env == "production":
             # In production, debug mode must ALWAYS be disabled
             self.debug = False

@@ -70,3 +70,34 @@ async def test_agent_task_status_and_cancel_routes() -> None:
         status_resp2 = await client.get(f"/api/agent/tasks/{task_id}")
         assert status_resp2.status_code == 200
         assert status_resp2.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_agent_plan_preview_no_tool_execution() -> None:
+    """Validate that plan preview formulates the plan without executing any tool."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/api/agent/plan", json={"goal": "take a screenshot"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["steps"]) == 1
+        assert data["steps"][0]["toolName"] == "computer.screenshot"
+        task_id = data["taskId"]
+
+        # Verify task is created in task_manager but NOT executed
+        status_resp = await client.get(f"/api/agent/tasks/{task_id}")
+        assert status_resp.status_code == 200
+        task_data = status_resp.json()
+        assert task_data["status"] == "pending"
+        for step in task_data["steps"]:
+            assert step["status"] == "pending"
+            assert step["output"] is None
+
+
+@pytest.mark.asyncio
+async def test_agent_plan_compound_does_not_fast_path() -> None:
+    """Validate that compound request does not fast-path into a single partial command."""
+    from app.decision.service import decision_service
+
+    prep = await decision_service.prepare_task("take a screenshot and open calculator", mode="control")
+    assert prep.exact_command is None
+    assert prep.use_rule_planner is False
