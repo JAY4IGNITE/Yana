@@ -81,6 +81,7 @@ class DecisionOutcome(BaseModel):
     reasoning_tier: ReasoningTier | None = None
     tier_probabilities: dict[str, float] | None = None
     answer_confidence: float | None = None
+    confidence: float | None = None
 
     # Multi-question answers (Phase E: task_domain candidate selection)
     domain: str | None = None

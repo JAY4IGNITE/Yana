@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.config import settings
 from app.decision.contracts import (
+    DecisionAnswer,
     DecisionOutcome,
     DecisionReasonCode,
     DecisionRequest,
@@ -147,14 +148,14 @@ class DecisionService:
         """Resolve candidate shortlisted tools if enabled and confident."""
         if not settings.decision_tool_candidates_enabled or outcome is None:
             return None, None
-        domain_answer = None
+        domain_answer: DecisionAnswer | None = None
         if outcome.answers and "task_domain" in outcome.answers:
             domain_answer = outcome.answers["task_domain"]
         elif outcome.domain:
-            domain_answer = {
-                "choice": outcome.domain,
-                "answer_confidence": outcome.domain_confidence or 0.0,
-            }
+            domain_answer = DecisionAnswer(
+                choice=outcome.domain,
+                answer_confidence=outcome.domain_confidence or 0.0,
+            )
 
         if domain_answer:
             try:

@@ -152,3 +152,13 @@ class ModelProvisioningManager:
             return hf_snapshot
 
         return None
+
+    def setup_model(self) -> tuple[Path, str]:
+        """Ensure model is ready, provisioning from HF cache if possible or returning path."""
+        self.provision_from_hf_cache()
+        resolved = self.get_resolved_model_path()
+        if not resolved:
+            raise RuntimeError(
+                f"Model checkpoint {self.model_commit} could not be resolved or verified in cache."
+            )
+        return resolved, self.model_commit

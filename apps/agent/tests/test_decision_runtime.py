@@ -32,12 +32,15 @@ for line in sys.stdin:
         continue
     cmd = json.loads(line)
     action = cmd.get("command")
-    
     if action == "init":
         if mode == "init_fail":
-            sys.stdout.write(json.dumps({"type": "init_error", "error": "mock_init_error"}) + "\\n")
+            resp = {"type": "init_error", "error": "mock_init_error"}
         else:
-            sys.stdout.write(json.dumps({"type": "init_ok", "model_commit": "7b928d828b7b0e022f929d9bd2e44165aa270148"}) + "\\n")
+            resp = {
+                "type": "init_ok",
+                "model_commit": "7b928d828b7b0e022f929d9bd2e44165aa270148",
+            }
+        sys.stdout.write(json.dumps(resp) + "\\n")
         sys.stdout.flush()
     elif action == "predict":
         req_id = cmd.get("request_id")
@@ -46,12 +49,14 @@ for line in sys.stdin:
         elif mode == "crash":
             sys.exit(42)
         elif mode == "malformed":
-            sys.stdout.write(json.dumps({"type": "predict_ok", "request_id": req_id, "result": "not_a_dict"}) + "\\n")
+            resp = {"type": "predict_ok", "request_id": req_id, "result": "not_a_dict"}
+            sys.stdout.write(json.dumps(resp) + "\\n")
             sys.stdout.flush()
             continue
         elif mode == "check_env":
             # Leak check: write whether secret env var was found
-            has_secret = "SECRET_TEST_KEY" in sys.argv or "YANA_AI_API_KEY" in dict(sys.orig_argv if hasattr(sys, 'orig_argv') else {})
+            orig_dict = dict(sys.orig_argv if hasattr(sys, 'orig_argv') else {})
+            has_secret = "SECRET_TEST_KEY" in sys.argv or "YANA_AI_API_KEY" in orig_dict
             # Return standard response
             sys.stdout.write(json.dumps({
                 "type": "predict_ok",
@@ -165,7 +170,7 @@ async def test_runtime_timeout_and_queue_saturation(fake_worker_script, tmp_path
     # Launch req1 (active) and req2 (waiting in queue), req3 should immediately be rejected as BUSY
     t1 = asyncio.create_task(rt.evaluate(req1))
     await asyncio.sleep(0.01)  # Allow req1 to dispatch
-    t2 = asyncio.create_task(rt.evaluate(req2))
+    _t2 = asyncio.create_task(rt.evaluate(req2))
     await asyncio.sleep(0.01)  # Allow req2 to enqueue
 
     # req3 submitted while req1 is active and req2 is waiting
@@ -224,7 +229,7 @@ async def test_runtime_environment_sanitization(fake_worker_script, tmp_path, mo
     await rt.start()
     # Check that in the child's proc env, sensitive keys were stripped
     # Popen environment check:
-    sanitized = rt._proc.args
+    assert rt._proc is not None
     assert rt.is_ready is True
 
     await rt.stop()

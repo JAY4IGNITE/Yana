@@ -38,7 +38,7 @@ async def test_conversation_chat_original_text_intake(monkeypatch: pytest.Monkey
             request_id=req.request_id,
             status=DecisionStatus.OK,
             reason_code=DecisionReasonCode.NONE,
-            reasoning_tier=ReasoningTier.DIRECT,
+            reasoning_tier=ReasoningTier.ROUTINE,
             confidence=0.92,
             answer_confidence=0.92,
         )
@@ -122,7 +122,7 @@ async def test_conversation_concurrent_sessions_isolated(monkeypatch: pytest.Mon
             request_id=req.request_id,
             status=DecisionStatus.OK,
             reason_code=DecisionReasonCode.NONE,
-            reasoning_tier=ReasoningTier.DIRECT,
+            reasoning_tier=ReasoningTier.ROUTINE,
             confidence=0.9,
             answer_confidence=0.9,
         )
@@ -155,7 +155,7 @@ async def test_conversation_concurrent_sessions_isolated(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_conversation_cancel_never_waits_for_laya(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Validate that cancelling a session directly hits provider without touching decision worker."""
+    """Validate that cancelling a session directly calls provider without touching worker."""
     mock_runtime = AsyncMock()
     mock_runtime.evaluate.side_effect = AssertionError(
         "Decision runtime should not be called on cancel"
@@ -180,7 +180,7 @@ async def test_conversation_no_chat_to_control_escalation(monkeypatch: pytest.Mo
             request_id=req.request_id,
             status=DecisionStatus.OK,
             reason_code=DecisionReasonCode.NONE,
-            reasoning_tier=ReasoningTier.DIRECT,
+            reasoning_tier=ReasoningTier.ROUTINE,
             confidence=0.9,
             answer_confidence=0.9,
         )

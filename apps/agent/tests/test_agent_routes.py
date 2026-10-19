@@ -98,6 +98,8 @@ async def test_agent_plan_compound_does_not_fast_path() -> None:
     """Validate that compound request does not fast-path into a single partial command."""
     from app.decision.service import decision_service
 
-    prep = await decision_service.prepare_task("take a screenshot and open calculator", mode="control")
+    prep = await decision_service.prepare_task(
+        "take a screenshot and open calculator", mode="control"
+    )
     assert prep.exact_command is None
     assert prep.use_rule_planner is False

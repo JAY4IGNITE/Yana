@@ -1,5 +1,4 @@
-"""Unit tests for scoped memory retrieval, encoder identity isolation, and safe data context.
-"""
+"""Unit tests for scoped memory retrieval, encoder identity isolation, and safe data context."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -310,6 +309,7 @@ async def test_memory_selector_acceptance_rejection() -> None:
     assert "m3" in rejected_ids
 
     # Prompt only contains accepted memory
+    assert res.context_prompt is not None
     assert "Python 3.11" in res.context_prompt
     assert "pizza" not in res.context_prompt
 

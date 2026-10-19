@@ -163,6 +163,7 @@ class DecisionRuntime:
                     )
                     + "\n"
                 )
+                assert self._proc.stdin is not None
                 self._proc.stdin.write(init_msg)
                 self._proc.stdin.flush()
 

@@ -4,6 +4,7 @@ Requires no weights or network access.
 """
 
 import pytest
+from pydantic import ValidationError
 
 from app.decision.contracts import (
     DecisionOutcome,
@@ -28,7 +29,7 @@ def test_decision_request_validation():
     assert req.schema_version == "1.0.0"
 
     # Max length bounded
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         DecisionRequest(request_id="bad", text="x" * 5000)
 
 

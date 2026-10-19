@@ -104,10 +104,10 @@ class MemorySelector:
         # If filtering is disabled or runtime is unavailable, preserve baseline
         is_enabled = settings.decision_memory_filtering_enabled if enabled is None else enabled
         if not is_enabled or runtime is None or runtime.mode == "off" or not runtime.is_ready:
-            accepted = candidates[:3]
-            prompt = self.format_context_prompt(accepted)
+            baseline_accepted = candidates[:3]
+            prompt = self.format_context_prompt(baseline_accepted)
             return MemoryRelevanceResult(
-                accepted_memories=accepted,
+                accepted_memories=baseline_accepted,
                 rejected_memories=[],
                 context_prompt=prompt,
                 evaluated=False,

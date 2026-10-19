@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { SettingsModal } from "../src/components/settings/SettingsModal";
-import { LocalDecisionsSettings } from "../src/components/settings/LocalDecisionsSettings";
+import { SettingsModal } from "../src/components/Settings/SettingsModal";
+import { LocalDecisionsSettings } from "../src/components/Settings/LocalDecisionsSettings";
 import { agentClient, DecisionStatusPayload } from "../src/services/agentClient";
 
 describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
@@ -12,6 +12,7 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
   const readyStatus: DecisionStatusPayload = {
     state: "ready",
     mode: "shadow",
+    is_ready: true,
     model_commit: "7b928d828b7b0e022f929d9bd2e44165aa270148",
     threads: 4,
     active_permitted: true,
@@ -19,8 +20,8 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
     telemetry_summary: {
       total_recorded: 12,
       avg_latency_ms: 145.2,
-      counts_by_tier: { routine: 8, complex: 4 },
-      abstain_count: 1,
+      tier_distribution: { routine: 8, complex: 4 },
+      status_distribution: { ok: 11, abstained: 1 },
     },
   };
 
@@ -62,6 +63,7 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
     const setModeSpy = vi.spyOn(agentClient, "setDecisionMode").mockResolvedValue({
       status: "ok",
       mode: "active",
+      state: "ready",
     });
 
     render(<LocalDecisionsSettings agentConnected={true} />);
@@ -93,6 +95,7 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
     const missingStatus: DecisionStatusPayload = {
       state: "model_missing",
       mode: "off",
+      is_ready: false,
       model_commit: null,
       threads: 4,
       active_permitted: false,
@@ -100,16 +103,16 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
       telemetry_summary: {
         total_recorded: 0,
         avg_latency_ms: 0,
-        counts_by_tier: {},
-        abstain_count: 0,
+        tier_distribution: {},
+        status_distribution: {},
       },
     };
 
     vi.spyOn(agentClient, "getDecisionStatus").mockResolvedValue(missingStatus);
     const setupSpy = vi.spyOn(agentClient, "setupDecisionModel").mockResolvedValue({
-      status: "ok",
+      success: true,
       message: "Model verified and provisioned successfully",
-      commit: "7b928d828b7b0e022f929d9bd2e44165aa270148",
+      model_commit: "7b928d828b7b0e022f929d9bd2e44165aa270148",
       disk_free_gb: 42.5,
     });
 
@@ -136,6 +139,7 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
     const notInstalledStatus: DecisionStatusPayload = {
       state: "not_installed",
       mode: "off",
+      is_ready: false,
       model_commit: null,
       threads: 4,
       active_permitted: false,
@@ -143,8 +147,8 @@ describe("LocalDecisionsSettings - Desktop UI & Setup Guidance", () => {
       telemetry_summary: {
         total_recorded: 0,
         avg_latency_ms: 0,
-        counts_by_tier: {},
-        abstain_count: 0,
+        tier_distribution: {},
+        status_distribution: {},
       },
     };
 

@@ -110,10 +110,10 @@ def test_openai_provider_empty_messages_validation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_scoped_hint_routes_in_auto() -> None:
+async def test_router_scoped_hint_routes_in_auto(monkeypatch: pytest.MonkeyPatch) -> None:
     """Validate that in auto mode, accepted hints route to the requested provider tier."""
-    import asyncio
     from unittest.mock import AsyncMock
+
     from app.ai.router import TieredAIRouter, scoped_routing_hint
 
     router = TieredAIRouter()
@@ -124,7 +124,7 @@ async def test_router_scoped_hint_routes_in_auto() -> None:
 
     router._local_provider = mock_local
     router._heavy_provider = mock_heavy
-    router._check_ollama_status = AsyncMock(return_value=True)
+    monkeypatch.setattr(router, "_check_ollama_status", AsyncMock(return_value=True))
     router.routing_mode = "auto"
 
     msg = [Message(role=MessageRole.USER, content="Hello simple query")]
@@ -150,6 +150,7 @@ async def test_router_scoped_hint_routes_in_auto() -> None:
 async def test_router_pinned_mode_overrides_hints() -> None:
     """Validate that pinned routing mode strictly overrides local decision hints."""
     from unittest.mock import AsyncMock
+
     from app.ai.router import TieredAIRouter, scoped_routing_hint
 
     router = TieredAIRouter()
@@ -173,10 +174,11 @@ async def test_router_pinned_mode_overrides_hints() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_scoped_hint_concurrency_isolation() -> None:
+async def test_router_scoped_hint_concurrency_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     """Validate that concurrent async tasks maintain isolated routing hints without cross-talk."""
     import asyncio
     from unittest.mock import AsyncMock
+
     from app.ai.router import TieredAIRouter, scoped_routing_hint
 
     router = TieredAIRouter()
@@ -187,7 +189,7 @@ async def test_router_scoped_hint_concurrency_isolation() -> None:
 
     router._local_provider = mock_local
     router._heavy_provider = mock_heavy
-    router._check_ollama_status = AsyncMock(return_value=True)
+    monkeypatch.setattr(router, "_check_ollama_status", AsyncMock(return_value=True))
     router.routing_mode = "auto"
 
     msg = [Message(role=MessageRole.USER, content="Hello test query")]

@@ -11,7 +11,8 @@ from app.decision.models import (
 def test_model_manager_empty_dir_status(tmp_path):
     mgr = ModelProvisioningManager(cache_dir=tmp_path)
     status, msg = mgr.get_model_status()
-    # If the global HF cache has the model, it may report READY via fallback unless we mock get_hf_hub_cache_dir
+    # If the global HF cache has the model, it may report READY via fallback
+    # unless we mock get_hf_hub_cache_dir
     # Let's ensure isolated testing by pointing commit to a dummy commit
     mgr_isolated = ModelProvisioningManager(
         cache_dir=tmp_path, model_commit="dummy_nonexistent_commit_123"

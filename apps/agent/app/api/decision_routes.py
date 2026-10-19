@@ -1,11 +1,10 @@
 """FastAPI endpoints for Local Decision layer status, mode configuration, and setup."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.config import settings
 from app.decision.models import ModelProvisioningManager
 from app.decision.policy import CalibrationManager
 from app.decision.runtime import RuntimeState, decision_runtime
@@ -24,18 +23,18 @@ class DecisionStatusResponse(BaseModel):
     mode: str
     is_ready: bool
     threads: int
-    model_commit: Optional[str] = None
+    model_commit: str | None = None
     active_permitted: bool
     calibration_status: str
-    telemetry_summary: Dict[str, Any]
+    telemetry_summary: dict[str, Any]
 
 
 class SetupResponse(BaseModel):
     success: bool
     message: str
     disk_free_gb: float
-    model_dir: Optional[str] = None
-    model_commit: Optional[str] = None
+    model_dir: str | None = None
+    model_commit: str | None = None
 
 
 @router.get("/status", response_model=DecisionStatusResponse)
@@ -57,9 +56,9 @@ async def get_decision_status() -> DecisionStatusResponse:
 
 
 @router.post("/mode")
-async def set_decision_mode(req: DecisionModeRequest) -> Dict[str, Any]:
+async def set_decision_mode(req: DecisionModeRequest) -> dict[str, Any]:
     """Switch decision mode between off, shadow, and active.
-    
+
     Turning decisions off immediately shuts down the worker process and reclaims memory.
     """
     logger.info(f"Setting decision mode to: {req.mode}")
@@ -91,13 +90,14 @@ async def set_decision_mode(req: DecisionModeRequest) -> Dict[str, Any]:
 async def setup_decision_model() -> SetupResponse:
     """Explicitly provision and verify the local decision model checkpoint with disk check."""
     mgr = ModelProvisioningManager()
-    
+
     # 1. Disk check
-    free_gb = mgr.check_disk_space()
-    if free_gb < 3.0:
+    has_space, free_bytes = mgr.check_disk_space()
+    free_gb = free_bytes / (1024**3)
+    if not has_space:
         raise HTTPException(
             status_code=400,
-            detail=f"Insufficient disk space: {free_gb:.1f} GB free (requires at least 3.0 GB).",
+            detail=f"Insufficient disk space: {free_gb:.1f} GB free (requires at least 1.5 GB).",
         )
 
     # 2. Setup model
@@ -116,4 +116,4 @@ async def setup_decision_model() -> SetupResponse:
         )
     except Exception as e:
         logger.error(f"Decision model setup failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Setup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Setup failed: {str(e)}") from e
